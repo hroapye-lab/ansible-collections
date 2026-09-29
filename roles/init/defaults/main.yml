@@ -1,6 +1,10 @@
 close_password: "yes"
 # ssh_auth_pub: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCsWdbllsBiXMn/6How/IWRtHp/tGOdB0BRu5hYPkQRGVqW8jYHIpImmfWhd2VulJ2xjqBYaxqsoTwO4dQwO7JZmLvqcws9s9JJQApoTVfxSsWT0+tk9+MzM2o23vu7ifkhA5AnvEOn6IIDAlS+2XGXqtRPacHceBppR43d+2T10n+0auxb1YprTXf4j314iB3K7l43srBFN196DbXYS95bulx2sg5aILbg0Ai+pa5mrM8dYzKu/X54Qqa0uDvEz50ZK3TyOUo8L2EFiCQjA9FtWMsRB70TbtcShnyMLVaMQ+jTDZSjNk3fIJT/T/OP4hTGd+lTBXKBhFAZH1294nuT cheersmind@kpy-fz2-b"
 
+# hostname_format 取值：
+#   inventory_hostname  —— 主机名 = inventory 名
+#   group-ip-inventory  —— 主机名 = 组名-内网IP-名（需 node_ip）
+#   node_ip             —— 主机名 = ip-内网IP（需 node_ip）
 #hostname_format: 'group-ip-inventory'
 
 extra_disk_device: ''

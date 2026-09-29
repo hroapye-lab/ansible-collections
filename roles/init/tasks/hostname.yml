@@ -12,6 +12,13 @@
   tags:
     - hostname
 
+- name: 'Step: modify hostname 2'
+  hostname:
+    name: "ip-{{ node_ip.replace('.', '-') }}"
+  when: hostname_format == 'node_ip'
+  tags:
+    - hostname
+
 - name: 'Step: modify etc hosts for resolve'
   lineinfile:
     path: /etc/hosts

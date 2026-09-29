@@ -1,0 +1,13 @@
+---
+# 是否把控制机上的 Zed remote server 二进制复制到容器（默认不操作）
+zed_copy_remote_server: false
+
+# 是否清理容器内已部署的 Zed remote server 二进制（默认不操作）
+zed_cleanup_remote_server: false
+
+# 本地二进制路径；留空时自动在常见位置查找
+# （如 ~/.zed_server/zed-remote-server-* 和 ~/.local/share/zed/remote_servers/）
+zed_remote_server_source: ""
+
+# 容器内放置二进制的目录（文件名保持与本地一致）
+zed_remote_server_dest_dir: "{{ ansible_env.HOME }}/.zed_server"

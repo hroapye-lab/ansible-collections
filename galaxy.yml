@@ -1,0 +1,17 @@
+namespace: hroapy
+name: misc
+version: 1.0.0
+readme: README.md
+authors:
+  - ops
+description: 整合 incus / init / kamailio 等项目零散 role 的共享集合
+license:
+  - MIT
+tags: []
+dependencies: {}
+repository: ""
+documentation: ""
+homepage: ""
+issues: ""
+build_ignore:
+  - docs

@@ -1,0 +1,22 @@
+---
+# 源码安装共用步骤：检出目标 ref，ref 变更后清理旧构建产物。
+
+- name: 检出 rtpengine 源码 {{ rtpengine_source_ref }}
+  ansible.builtin.git:
+    repo: "{{ rtpengine_source_repo }}"
+    dest: "{{ rtpengine_source_build_dir }}"
+    version: "{{ rtpengine_source_ref }}"
+    force: true
+    depth: 1
+  register: rtpengine_git
+
+- name: 清理旧构建产物（ref 变更后）
+  ansible.builtin.command:
+    argv:
+      - git
+      - -C
+      - "{{ rtpengine_source_build_dir }}"
+      - clean
+      - -fdx
+  when: rtpengine_git.changed
+  changed_when: true

@@ -1,0 +1,79 @@
+- name: upgrade all packages
+  yum:
+    name: '*'
+    state: latest
+    exclude: docker
+  when: ansible_facts['os_family'] == "RedHat"
+  async: 0
+  poll: 5
+
+- name: "Step: install base software for centos"
+  yum:
+    state: latest
+    name:
+      - curl
+      - wget
+      - rsync
+      - sudo
+      - lrzsz
+      - vim
+      - net-tools
+      - dstat
+      - sysstat
+      - tree
+      - bind-utils
+      - iptables-services
+      - tcpdump
+      - iftop
+      - epel-release
+      - screen
+      - jq
+      - iscsi-initiator-utils
+      - ipset
+      - ipvsadm
+      - netcat
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Upgrade all packages to the latest version
+  apt:
+    name: "*"
+    state: latest
+  when: ansible_facts['os_family'] == "Debian" and source_list_replace == "yes"
+  async: 0
+  poll: 5
+
+- name: "Step: change /etc/apt/sources.list"
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    backup: yes
+  with_items:
+    - { src: "files/sources.list" ,dest: "/etc/apt/" }
+  when: ansible_facts['os_family'] == "Debian" and source_list_replace == "yes"
+
+- name: "Step: install base software for debian"
+  apt:
+    update_cache: yes
+    state: latest
+    name:
+      - curl
+      - wget
+      - rsync
+      - sudo
+      - lrzsz
+      - vim
+      - net-tools
+      - dstat
+      - sysstat
+  register: result
+  retries: 5
+  until: result is succeeded
+  delay: 5
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: "Step: sysstat enable config"
+  replace:
+    path: /etc/default/sysstat
+    regexp: 'ENABLED="false"'
+    replace: 'ENABLED="true"'
+  when: ansible_facts['os_family'] == "Debian"

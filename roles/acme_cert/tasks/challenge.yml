@@ -1,0 +1,65 @@
+---
+# 各节点写 token 并临时起 80 端口静态服务，控制端完成校验取回证书；
+# block/always 保证失败路径也会停服务、删 token。
+
+- name: HTTP-01 校验
+  block:
+    - name: 创建 webroot 目录
+      ansible.builtin.file:
+        path: "{{ tls_webroot }}/.well-known/acme-challenge"
+        state: directory
+        mode: "0755"
+
+    - name: 写入 HTTP-01 token
+      ansible.builtin.copy:
+        dest: "{{ tls_webroot }}/{{ item.value['http-01'].resource }}"
+        content: "{{ item.value['http-01'].resource_value }}"
+        mode: "0644"
+      loop: "{{ tls_order.challenge_data | dict2items }}"
+      when: item.value['http-01'] is defined
+
+    - name: 临时启动 80 端口校验服务（python3 自带模块，后台 async）
+      ansible.builtin.shell:
+        cmd: "python3 -m http.server 80 --directory {{ tls_webroot }}"
+      async: 600
+      poll: 0
+      # challenge_data 为空 = 授权已 valid（如失败重试），无需 HTTP-01 质询，
+      # 直接走取证书任务
+      when: tls_order.challenge_data | default({}) | length > 0
+
+    - name: 等待校验服务就绪
+      ansible.builtin.uri:
+        url: "http://127.0.0.1/{{ item.value['http-01'].resource }}"
+        return_content: true
+        use_proxy: false
+      loop: "{{ tls_order.challenge_data | dict2items }}"
+      when: item.value['http-01'] is defined
+      register: tls_probe
+      until: tls_probe.content | default('') | trim == item.value['http-01'].resource_value
+      retries: 30
+      delay: 2
+
+    - name: 通知 CA 完成校验并取回证书
+      community.crypto.acme_certificate:
+        acme_directory: "{{ tls_acme_directory }}"
+        acme_version: 2
+        account_key_src: "{{ tls_work_dir }}/account.key"
+        modify_account: false
+        challenge: http-01
+        csr: "{{ tls_work_dir }}/csr.pem"
+        data: "{{ tls_order }}"
+        dest: "{{ tls_work_dir }}/cert.pem"
+        fullchain_dest: "{{ tls_work_dir }}/{{ tls_domain }}.pem"
+      run_once: true
+      delegate_to: localhost
+  always:
+    - name: 停止临时校验服务
+      ansible.builtin.shell:
+        cmd: "pkill -f '[h]ttp.server 80 --directory {{ tls_webroot }}' || true"
+      changed_when: false
+      failed_when: false
+
+    - name: 删除临时 webroot
+      ansible.builtin.file:
+        path: "{{ tls_webroot }}"
+        state: absent

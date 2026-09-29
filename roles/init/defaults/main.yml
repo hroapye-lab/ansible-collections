@@ -1,0 +1,16 @@
+close_password: "yes"
+# ssh_auth_pub: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCsWdbllsBiXMn/6How/IWRtHp/tGOdB0BRu5hYPkQRGVqW8jYHIpImmfWhd2VulJ2xjqBYaxqsoTwO4dQwO7JZmLvqcws9s9JJQApoTVfxSsWT0+tk9+MzM2o23vu7ifkhA5AnvEOn6IIDAlS+2XGXqtRPacHceBppR43d+2T10n+0auxb1YprTXf4j314iB3K7l43srBFN196DbXYS95bulx2sg5aILbg0Ai+pa5mrM8dYzKu/X54Qqa0uDvEz50ZK3TyOUo8L2EFiCQjA9FtWMsRB70TbtcShnyMLVaMQ+jTDZSjNk3fIJT/T/OP4hTGd+lTBXKBhFAZH1294nuT cheersmind@kpy-fz2-b"
+
+#hostname_format: 'group-ip-inventory'
+
+extra_disk_device: ''
+extra_mount_point: '/opt'
+
+addon_mount_dirs:
+  - { path: "/var/log", src: "/opt/log"}
+  - { path: "/var/lib/rancher", src: "/opt/data/rancher"}
+  - { path: "/var/lib/kubelet", src: "/opt/data/kubelet"}
+
+iptables_extra_rules:
+  - '-A INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT'
+  - '-A INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT'

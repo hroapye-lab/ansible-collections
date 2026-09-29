@@ -1,0 +1,191 @@
+---
+# ==== 网络监听 ====
+# NG 控制监听地址：Kamailio 通过 udp:<该地址>:<rtpengine_listen_port> 调用本机 rtpengine。
+# 默认 127.0.0.1：Kamailio 容器为 host 网络（共享宿主 loopback），同机回环即可；
+# 且控制口不暴露到内网。如需绑定内网/其它地址可显式覆盖。
+rtpengine_listen_ip: "127.0.0.1"
+rtpengine_listen_port: 2223
+rtpengine_cli_port: 2224
+
+# 媒体面 interface：
+# - media_ip 为本机绑定的媒体 IP；HA 下使用 VIP（keepalived 已开 ip_nonlocal_bind，
+#   BACKUP 节点即使暂未持有 VIP 也能 bind）；
+# - advertise_ip 为通告给对端的媒体地址（缺省取 kamailio_listen_public_ip）。
+# 未配置 VIP 时 media_ip 回退到本机内网 IP，避免生成非法 interface。
+rtpengine_media_ip: "{{ kamailio_keepalived_vip | default(rtpengine_listen_ip, true) }}"
+rtpengine_advertise_ip: "{{ kamailio_listen_public_ip | default(rtpengine_media_ip, true) }}"
+rtpengine_interface_name: ""
+
+# ==== 内核转发模式 ====
+# 回退由 daemon 自身保证：table=0 时内核模块不可用则自动按用户态继续运行，
+# 除非配置 no-fallback=true。
+# auto（默认）：table=0，模块不可用自动回退用户态
+# required：table=0 + no-fallback=true，模块不可用时 daemon 拒绝启动
+# userspace：table=-1，纯用户态
+rtpengine_kernel_mode: auto
+# 非 userspace 模式下写入配置的内核转发表（正常保持 0）
+rtpengine_kernel_table: 0
+
+# ==== apt 版本要求 ====
+# 最低门槛 10.5 = Debian bookworm 官方源版本；allow_old_apt 只放行不改变版本。
+rtpengine_min_daemon_version: "10.5"
+rtpengine_allow_old_apt: false
+
+# ==== 版本策略（apt 安装）====
+# exact_version=false（默认）：装仓库候选版本，不降级。
+# exact_version=true：钉到 rtpengine_target_version（完整 dpkg 版本号）；
+#                     降级需 allow_downgrade=true。
+rtpengine_exact_version: false
+rtpengine_target_version: ""           # 例：11.5.1.53+0~mr11.5.1.53
+rtpengine_allow_downgrade: false
+# 校验已装版本属于配置 MR，防止低 MR 配置 + 高版本已装的静默漂移。
+rtpengine_require_mr_match: true
+
+# ==== 安装方式 ====
+# rtpengine_source_build=false（默认）：apt 仓库安装。
+# true：源码安装，版本由 rtpengine_source_ref 控制。
+rtpengine_source_build: false
+# source 内部：rtpengine_dpkg_build=false（默认）走 direct；true 走官方 dpkg 打包。
+rtpengine_dpkg_build: false
+# 源码内核模块策略（仅 kernel_mode != userspace 时生效）：
+# auto（默认）：direct 尝试编译，失败不阻断；dpkg 不自动装 kernel-dkms deb
+# always：编译/安装失败即 fail；never：不装模块
+rtpengine_source_kernel_policy: auto
+# 内核头按声明安装（如 Debian: linux-headers-amd64；Ubuntu: linux-headers-generic），
+# 版本由发行版元包自动跟随；role 不做内核版本查询。留空则不安装。
+rtpengine_kernel_headers_pkg: ""
+# 上游 git ref（默认 mr12.5.1.2 对应 bookworm；换 MR 改 tag 并核对依赖）
+rtpengine_source_repo: https://github.com/sipwise/rtpengine.git
+rtpengine_source_ref: mr12.5.1.2
+rtpengine_source_build_dir: /usr/local/src/rtpengine
+rtpengine_source_install_dir: /opt/rtpengine
+# direct 模式 daemon 构建依赖（bookworm + mr12.5.1.2）
+rtpengine_source_build_deps:
+  - build-essential
+  - pkg-config
+  - git
+  - gperf
+  - libcurl4-openssl-dev
+  - libevent-dev
+  - libglib2.0-dev
+  - libhiredis-dev
+  - libiptc-dev
+  - libjson-glib-dev
+  - libmnl-dev
+  - libmosquitto-dev
+  - libnftnl-dev
+  - libpcap-dev
+  - libpcre2-dev
+  - libssl-dev
+  - libsystemd-dev
+  - liburing-dev
+  - libwebsockets-dev
+  - libxmlrpc-core-c3-dev
+  - zlib1g-dev
+# dpkg 模式打包工具（mk-build-deps 自动补齐 Build-Depends）
+rtpengine_source_pkg_tools:
+  - build-essential
+  - ca-certificates
+  - debhelper
+  - devscripts
+  - dkms
+  - dpkg-dev
+  - git
+  - markdown
+  - pandoc
+# dpkg 模式构建 profile（按目标 tag 的 debian/control 调整）
+rtpengine_source_build_profiles: >-
+  pkg.ngcp-rtpengine.no-transcoding pkg.ngcp-rtpengine.nobcg729
+  pkg.ngcp-rtpengine.nouring
+
+# ==== 软件包来源 ====
+# 默认用系统 apt 源（Debian bookworm 自带 10.5.x；bookworm 无 backports 包）。
+# 需要更新版时启用第三方仓库（Sipwise / Ubuntu PPA 等）：role 自动安装 keyring、
+# 写入 sources.list、强制刷新 apt 索引。
+# 包名由 rtpengine_packages / rtpengine_kernel_packages 独立控制，不绑在此开关上。
+rtpengine_use_3rd_repo: false
+
+# 第三方源配置（按系统自动选默认值）
+# Debian：Sipwise apt 源，密钥走 ngcp-archive-keyring deb；
+# Ubuntu：Launchpad PPA，必须写真实 https 地址——`ppa:user/name` 只是
+#         add-apt-repository 的语法糖，直接写进 sources.list 会被 apt 判为非法行。
+rtpengine_3rd_repo_mr: >-
+  {{ 'mr11.5.1' if ansible_facts['distribution'] == 'Debian' else '' }}
+rtpengine_3rd_repo_url: >-
+  {{ ('https://deb.sipwise.com/spce/' ~ rtpengine_3rd_repo_mr)
+     if ansible_facts['distribution'] == 'Debian'
+     else ('https://ppa.launchpadcontent.net/davidlublink/rtpengine/ubuntu'
+           if ansible_facts['distribution'] == 'Ubuntu' else '') }}
+rtpengine_3rd_repo_keyring_url: >-
+  {{ ('https://deb.sipwise.com/spce/keyring/ngcp-archive-keyring_' ~ rtpengine_3rd_repo_mr ~ '.deb')
+     if ansible_facts['distribution'] == 'Debian'
+     else '' }}
+# PPA 公钥（armored）：keyring_path 非空时下载 key_url 并 dearmor 到该路径，
+# sources 行同时带上 [signed-by=...]。
+rtpengine_3rd_repo_key_url: >-
+  {{ ('https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x24376EF97E6A3E3FAFD192836A7C036BF886C41B&options=mr')
+     if ansible_facts['distribution'] == 'Ubuntu'
+     else '' }}
+rtpengine_3rd_repo_keyring_path: >-
+  {{ '/etc/apt/keyrings/davidlublink-rtpengine.gpg' if ansible_facts['distribution'] == 'Ubuntu' else '' }}
+rtpengine_3rd_repo_dist: "{{ ansible_facts['distribution_release'] | default('bookworm') }}"
+
+# 软件包列表（按 rtpengine_use_3rd_repo 自动切换：第三方源 ngcp-*，原生源 rtpengine-*）
+rtpengine_packages: >-
+  {{ (['ngcp-rtpengine-daemon', 'ngcp-rtpengine-utils']
+      if rtpengine_use_3rd_repo
+      else ['rtpengine-daemon', 'rtpengine-utils']) }}
+
+# daemon 包名从列表派生，不单独维护
+rtpengine_package_daemon_name: "{{ rtpengine_packages | first }}"
+
+# 内核模块包（提供 xt_RTPENGINE / nft_rtpengine）
+# 第三方源为 ngcp-rtpengine-kernel-dkms；原生源为 xtables-addons-dkms。
+rtpengine_kernel_packages: >-
+  {{ (['ngcp-rtpengine-kernel-dkms', 'ngcp-rtpengine-iptables']
+      if rtpengine_use_3rd_repo
+      else ['xtables-addons-dkms', 'xtables-addons-common']) }}
+
+# systemd unit 名：source+direct 为自定义 unit，其余跟随 daemon 包名
+rtpengine_service_name: >-
+  {{ 'rtpengine-source'
+     if (rtpengine_source_build and not rtpengine_dpkg_build)
+     else rtpengine_package_daemon_name }}
+rtpengine_config_file: /etc/rtpengine/rtpengine.conf
+
+# ==== RTP 端口与超时 ====
+rtpengine_port_min: 21500
+rtpengine_port_max: 32768
+rtpengine_timeout: 60
+rtpengine_silent_timeout: 3600
+rtpengine_final_timeout: 10800
+rtpengine_delete_delay: 5
+
+# ==== Redis HA（外部服务，仅提供连接变量）====
+# 留空 rtpengine_redis_host 表示不启用 Redis keyspace 同步（配置里不生成相关行）。
+rtpengine_redis_host: ""
+rtpengine_redis_port: 6379
+rtpengine_redis_password: ""
+rtpengine_redis_auth: >-
+  {{ (rtpengine_redis_password ~ '@') if rtpengine_redis_password else '' }}
+
+# 同组节点顺序即 Redis DB 分配顺序：第 N 台使用 db_base + N。
+# 两台 rtpengine 连接同一 Redis 服务但写各自 DB，并互相订阅对方 DB（官方 HA 模式）。
+# 动态取当前主机所属组（排除 all/ungrouped），单节点时回退到自身。
+rtpengine_redis_nodes: >-
+  {{ groups[(group_names | difference(['all', 'ungrouped'])) | first]
+     | default([inventory_hostname]) }}
+rtpengine_redis_db_base: 2
+rtpengine_redis_db: >-
+  {{ rtpengine_redis_db_base + rtpengine_redis_nodes.index(inventory_hostname) }}
+
+# 其它节点 DB 号，供本机订阅；不包含自己的 DB。
+# rtpengine 官方语法为空格分隔的 keyspace 列表（-k, --subscribe-keyspace=INT INT ...）。
+rtpengine_redis_subscribe_keyspaces: >-
+  {%- set __rp_keys = [] -%}
+  {%- for __rp_node in rtpengine_redis_nodes -%}
+  {%-   if __rp_node != inventory_hostname -%}
+  {%-     set _ = __rp_keys.append(rtpengine_redis_db_base + loop.index0) -%}
+  {%-   endif -%}
+  {%- endfor -%}
+  {{ __rp_keys | join(' ') }}

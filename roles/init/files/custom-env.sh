@@ -1,0 +1,10 @@
+PS1="\[\e[31;1m\]\u\[\e[33m\]@\[\e[35m\]\h \[\e[36m\]\t \[\e[32;1m\]\w\[\e[0m\]\\$ "
+alias cp='cp -i'
+alias egrep='egrep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias grep='grep --color=auto'
+alias l.='ls -d .* --color=auto'
+alias ll='ls -l --color=auto'
+alias ls='ls --color=auto'
+alias mv='mv -i'
+alias rm='rm -i'

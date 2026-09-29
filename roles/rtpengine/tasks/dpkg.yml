@@ -1,0 +1,130 @@
+---
+# dpkg：官方 debian/ 打包（dpkg-buildpackage）并安装生成的 deb。
+
+- name: 读取打包版本
+  ansible.builtin.command:
+    argv: [dpkg-parsechangelog, -SVersion, -l, debian/changelog]
+    chdir: "{{ rtpengine_source_build_dir }}"
+  register: rtpengine_deb_ver_raw
+  changed_when: false
+
+- name: 记录打包版本
+  ansible.builtin.set_fact:
+    rtpengine_deb_ver: "{{ rtpengine_deb_ver_raw.stdout }}"
+
+- name: 收集已安装包信息
+  ansible.builtin.package_facts:
+
+- name: 判断是否需要重新打包
+  ansible.builtin.set_fact:
+    rtpengine_need_build: >-
+      {{ (ansible_facts.packages.get('ngcp-rtpengine-daemon', []) | length) == 0
+         or ansible_facts.packages['ngcp-rtpengine-daemon'][0].version
+            != rtpengine_deb_ver }}
+
+- name: 打包并安装 daemon/utils
+  when: rtpengine_need_build
+  block:
+    - name: 安装打包工具
+      ansible.builtin.apt:
+        name: "{{ rtpengine_source_pkg_tools }}"
+        state: present
+        update_cache: true
+
+    - name: 安装 Build-Depends 元包
+      ansible.builtin.command:
+        argv: [mk-build-deps, --install, --remove]
+        chdir: "{{ rtpengine_source_build_dir }}"
+      environment:
+        DEB_BUILD_PROFILES: "{{ rtpengine_source_build_profiles }}"
+      changed_when: false
+
+    - name: 清理旧 deb 产物
+      ansible.builtin.find:
+        paths: "{{ rtpengine_source_build_dir | dirname }}"
+        patterns: "ngcp-rtpengine-*.deb"
+      register: rtpengine_old_debs
+
+    - name: 删除旧 deb 产物
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ rtpengine_old_debs.files }}"
+
+    - name: dpkg-buildpackage（二进制打包，不签名）
+      ansible.builtin.command:
+        argv: [dpkg-buildpackage, -b, -us, -uc]
+        chdir: "{{ rtpengine_source_build_dir }}"
+      environment:
+        DEB_BUILD_PROFILES: "{{ rtpengine_source_build_profiles }}"
+      changed_when: false
+
+    - name: 查找打包产物
+      ansible.builtin.find:
+        paths: "{{ rtpengine_source_build_dir | dirname }}"
+        patterns: "ngcp-rtpengine-*.deb"
+      register: rtpengine_debs
+
+    - name: 安装 daemon/utils deb
+      ansible.builtin.apt:
+        deb: "{{ item }}"
+      loop: >-
+        {{ rtpengine_debs.files
+           | map(attribute='path')
+           | select('regex', 'ngcp-rtpengine-(daemon|utils)_')
+           | list }}
+      notify: restart rtpengine
+
+- name: 安装官方 kernel-dkms deb（仅 always）
+  when:
+    - rtpengine_kernel_mode != 'userspace'
+    - rtpengine_source_kernel_policy == 'always'
+  block:
+    - name: 安装声明的内核头
+      ansible.builtin.apt:
+        name: "{{ rtpengine_kernel_headers_pkg }}"
+        state: present
+
+    - name: 查找 kernel-dkms deb
+      ansible.builtin.find:
+        paths: "{{ rtpengine_source_build_dir | dirname }}"
+        patterns: "ngcp-rtpengine-kernel-dkms_*.deb"
+      register: rtpengine_kmod_debs
+
+    - name: 安装 kernel-dkms deb
+      ansible.builtin.apt:
+        deb: "{{ item }}"
+      loop: "{{ rtpengine_kmod_debs.files | map(attribute='path') | list }}"
+      notify: restart rtpengine
+
+- name: 写入构建信息
+  ansible.builtin.copy:
+    dest: /etc/rtpengine/build-info
+    content: "install_method=source\nbuild_method=dpkg\nref={{ rtpengine_source_ref }}\ndeb_version={{ rtpengine_deb_ver }}\n"
+    owner: root
+    group: rtpengine
+    mode: "0644"
+
+- name: 检查 direct 遗留 unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/rtpengine-source.service
+  register: rtpengine_direct_unit
+
+- name: 清理 direct 遗留 unit
+  when: rtpengine_direct_unit.stat.exists
+  block:
+    - name: 停用 rtpengine-source
+      ansible.builtin.systemd:
+        name: rtpengine-source
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: 删除 unit 文件
+      ansible.builtin.file:
+        path: /etc/systemd/system/rtpengine-source.service
+        state: absent
+
+    - name: 重新加载 systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

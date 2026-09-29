@@ -1,0 +1,103 @@
+---
+- name: 提示 Zed remote server 功能未启用
+  ansible.builtin.debug:
+    msg: "zed_copy_remote_server=false，跳过 Zed remote server 复制/清理；如需启用，可在 inventory 组变量中设置 zed_copy_remote_server: true，或用 -e zed_copy_remote_server=true"
+  when:
+    - not zed_copy_remote_server | bool
+    - not zed_cleanup_remote_server | bool
+
+- name: 检查本地常见 Zed server 目录
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  delegate_to: localhost
+  run_once: true
+  register: zed_local_dir_stats
+  loop:
+    - "{{ lookup('env', 'HOME') }}/.zed_server"
+    - "{{ lookup('env', 'HOME') }}/.local/share/zed/remote_servers"
+  when: zed_copy_remote_server | bool
+
+- name: 整理本地存在的 Zed server 目录
+  ansible.builtin.set_fact:
+    zed_candidate_dirs: "{{ zed_local_dir_stats.results | default([]) | selectattr('stat.exists') | map(attribute='item') | list }}"
+  when: zed_copy_remote_server | bool
+
+- name: 在常见目录中查找 Zed remote server 二进制
+  ansible.builtin.find:
+    paths: "{{ zed_candidate_dirs | default([]) }}"
+    patterns: "zed-remote-server*"
+    recurse: true
+    file_type: file
+  delegate_to: localhost
+  run_once: true
+  register: zed_local_find
+  when:
+    - zed_copy_remote_server | bool
+    - zed_candidate_dirs | default([]) | length > 0
+
+- name: 确保容器内 Zed server 目录存在
+  ansible.builtin.file:
+    path: "{{ zed_remote_server_dest_dir }}"
+    state: directory
+    mode: "0755"
+  when: zed_copy_remote_server | bool
+
+- name: 复制指定的 Zed remote server 二进制到容器
+  ansible.builtin.copy:
+    src: "{{ zed_remote_server_source }}"
+    dest: "{{ zed_remote_server_dest_dir }}/{{ zed_remote_server_source | basename }}"
+    mode: "0755"
+  when:
+    - zed_copy_remote_server | bool
+    - zed_remote_server_source | length > 0
+
+- name: 复制自动发现的 Zed remote server 二进制到容器
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ zed_remote_server_dest_dir }}/{{ item.path | basename }}"
+    mode: "0755"
+  loop: "{{ zed_local_find.files | default([]) }}"
+  when:
+    - zed_copy_remote_server | bool
+    - zed_remote_server_source | length == 0
+    - zed_local_find.files | default([]) | length > 0
+
+- name: 提示未找到本地 Zed remote server 二进制
+  ansible.builtin.debug:
+    msg: "未在常见位置找到 Zed remote server，请设置变量 zed_remote_server_source 指定本地二进制路径"
+  when:
+    - zed_copy_remote_server | bool
+    - zed_remote_server_source | length == 0
+    - zed_local_find.files | default([]) | length == 0
+
+- name: 校验复制与清理不能同时开启
+  ansible.builtin.assert:
+    that:
+      - not (zed_copy_remote_server | bool and zed_cleanup_remote_server | bool)
+    fail_msg: "zed_copy_remote_server 和 zed_cleanup_remote_server 不能同时为 true"
+  when: zed_copy_remote_server | bool or zed_cleanup_remote_server | bool
+
+- name: 检查容器内 Zed server 目录是否存在
+  ansible.builtin.stat:
+    path: "{{ zed_remote_server_dest_dir }}"
+  register: zed_remote_server_dest_stat
+  when: zed_cleanup_remote_server | bool
+
+- name: 查找容器内已部署的 Zed remote server 二进制
+  ansible.builtin.find:
+    paths: "{{ zed_remote_server_dest_dir }}"
+    patterns: "zed-remote-server*"
+    file_type: file
+  register: zed_remote_server_cleanup_find
+  when:
+    - zed_cleanup_remote_server | bool
+    - zed_remote_server_dest_stat.stat.exists | default(false)
+
+- name: 删除容器内的 Zed remote server 二进制
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ zed_remote_server_cleanup_find.files | default([]) }}"
+  when:
+    - zed_cleanup_remote_server | bool
+    - zed_remote_server_cleanup_find.files | default([]) | length > 0

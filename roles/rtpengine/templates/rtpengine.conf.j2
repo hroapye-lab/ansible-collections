@@ -1,0 +1,34 @@
+[rtpengine]
+interface = {{ (rtpengine_interface_name ~ '/') if rtpengine_interface_name else '' }}{{ rtpengine_media_ip }}!{{ rtpengine_advertise_ip }}
+listen-ng = {{ rtpengine_listen_ip }}:{{ rtpengine_listen_port }}
+listen-cli = 127.0.0.1:{{ rtpengine_cli_port }}
+
+port-min = {{ rtpengine_port_min }}
+port-max = {{ rtpengine_port_max }}
+
+foreground = false
+log-level = 6
+log-facility = local1
+log-stderr = false
+
+timeout = {{ rtpengine_timeout }}
+silent-timeout = {{ rtpengine_silent_timeout }}
+final-timeout = {{ rtpengine_final_timeout }}
+delete-delay = {{ rtpengine_delete_delay }}
+
+# table=0 时内核模块不可用由 daemon 自动回退用户态；required 模式加 no-fallback
+table = {{ rtpengine_kernel_table if rtpengine_kernel_mode != 'userspace' else -1 }}
+{% if rtpengine_kernel_mode == 'required' %}
+no-fallback = true
+{% endif %}
+
+{% if rtpengine_redis_host %}
+# Redis HA：本机写本机 DB，订阅对端 DB（服务端需开启 notify-keyspace-events AKE）
+redis = {{ rtpengine_redis_auth }}{{ rtpengine_redis_host }}:{{ rtpengine_redis_port }}/{{ rtpengine_redis_db }}
+{% if rtpengine_redis_subscribe_keyspaces %}
+# 官方语法：空格分隔的 keyspace 列表（--subscribe-keyspace=INT INT ...）
+subscribe-keyspace = {{ rtpengine_redis_subscribe_keyspaces }}
+{% endif %}
+redis-expires = 86400
+redis-connect-timeout = 1000
+{% endif %}

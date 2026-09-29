@@ -1,0 +1,119 @@
+- name: "include ssh_key.yml set auth pub key"
+  ansible.builtin.include_tasks:
+    file: ssh_key.yml
+  tags:
+    - never
+    - ssh_only_key
+
+- name: "include task for format hostname"
+  ansible.builtin.include_tasks: hostname.yml
+  when: hostname_format is defined
+  tags:
+    - set_hostname
+
+- name: Add common hosts line
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ item.ip }} {{ item.hostnames | join(' ') }}"
+    regexp: "^{{ item.ip }}"
+    state: present
+  with_items: "{{ special_hosts }}"
+  when: special_hosts is defined
+
+- name: "include task for partition check"
+  ansible.builtin.include_tasks: check_disk.yml
+  when: extra_disk_device | length > 0
+  tags:
+    - init_extra_disk
+
+- name: "include task for partition operation"
+  ansible.builtin.include_tasks: add_disk.yml
+  when:
+    - extra_disk_device | length > 0
+    - extra_disk_exists and not extra_disk_is_mounted
+  tags:
+    - init_extra_disk
+
+- name: "check the machine access internet"
+  ansible.builtin.include_tasks: check_net.yml
+  tags:
+    - never
+    - check_internet_access
+
+- name: "disable SELinux"
+  ansible.posix.selinux:
+    state: disabled
+  when: ansible_facts['os_family'] in ["RedHat", "Amazon", "Kylin", "EulerOS", "UOS"]
+  tags:
+    - disable_selinux
+
+- name: "set ulimit"
+  community.general.pam_limits:
+    dest: /etc/security/limits.conf
+    domain: "{{ item.domain }}"
+    limit_type: "{{ item.limit_type }}"
+    limit_item: "{{ item.limit_item }}"
+    value: "{{ item.value }}"
+  loop:
+    - { domain: "*",   limit_type: "hard", limit_item: "nofile", value: "1048576" }
+    - { domain: "*",   limit_type: "soft", limit_item: "nofile", value: "1048576" }
+    - { domain: "root", limit_type: "hard", limit_item: "nofile", value: "1048576" }
+    - { domain: "root", limit_type: "soft", limit_item: "nofile", value: "1048576" }
+  tags:
+    - limit_set
+
+- name: "include packages.yml install packages"
+  ansible.builtin.include_tasks: packages.yml
+  when: net_access | default(true)
+  tags: 
+    - install_packages
+
+- name: "copy sysctl config to disable IPv6"
+  ansible.builtin.copy:
+    src: ../files/98-disableipv6.conf
+    dest: /etc/sysctl.d/98-disableipv6.conf
+  tags: 
+    - never
+    - disable_ipv6
+
+- name: "reload sysctl config for IPv6"
+  ansible.builtin.sysctl:
+    reload: true
+    sysctl_file: /etc/sysctl.d/98-disableipv6.conf
+    name: net.ipv6.conf.all.disable_ipv6
+    value: "1"
+  tags:
+    - never
+    - disable_ipv6
+
+- name: "copy sysctl optimization config"
+  ansible.builtin.copy:
+    src: ../files/99-opti.conf
+    dest: /etc/sysctl.d/99-opti.conf
+
+- name: "reload sysctl config for swappiness"
+  ansible.builtin.sysctl:
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-opti.conf
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+  with_items:
+    - { key: 'vm.swappiness', value: '0' }
+    - { key: 'vm.overcommit_memory', value: '1' }
+    - { key: 'net.ipv4.ip_forward', value: '1' }
+
+- name: "include iptables.yml enable iptables service"
+  ansible.builtin.include_tasks:
+    file: iptables.yml
+  tags:
+    - enable_iptables
+
+- name: "deploy /etc/profile.d/custom-env.sh and ~/.vimrc"
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode | default('0644') }}"
+  loop:
+    - { src: "files/history.sh", dest: "/etc/profile.d/" }
+    - { src: "files/custom-env.sh", dest: "/etc/profile.d/" }
+    - { src: "files/vimrc", dest: "/etc/profile.d/.vimrc" }

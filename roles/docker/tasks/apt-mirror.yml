@@ -1,0 +1,43 @@
+---
+- name: 安装基础工具（ca-certificates / curl / gnupg）
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: 查找系统中的 DEB822 源文件（*.sources）
+  ansible.builtin.find:
+    paths: /etc/apt/sources.list.d
+    patterns: "*.sources"
+  register: apt_deb822_files
+
+- name: 备份 DEB822 源文件
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ item.path }}.apt-mirror.bak"
+    remote_src: true
+  loop: "{{ apt_deb822_files.files }}"
+  when: apt_deb822_files.files | length > 0
+
+- name: 移除 DEB822 源文件（统一由 /etc/apt/sources.list 接管）
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ apt_deb822_files.files }}"
+  when: apt_deb822_files.files | length > 0
+
+- name: 写入镜像源的 /etc/apt/sources.list
+  ansible.builtin.template:
+    src: sources.list.j2
+    dest: /etc/apt/sources.list
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: 更新 apt 缓存（新源）
+  ansible.builtin.apt:
+    update_cache: true

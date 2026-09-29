@@ -1,0 +1,96 @@
+---
+# direct：make 直接编译 daemon + 内核模块（默认）。
+
+- name: 安装编译依赖
+  ansible.builtin.apt:
+    name: "{{ rtpengine_source_build_deps }}"
+    state: present
+    update_cache: true
+
+- name: 创建 rtpengine 用户
+  ansible.builtin.user:
+    name: rtpengine
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: 创建配置与安装目录
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: "{{ 'rtpengine' if item == '/etc/rtpengine' else 'root' }}"
+    mode: "{{ '0750' if item == '/etc/rtpengine' else '0755' }}"
+  loop:
+    - /etc/rtpengine
+    - "{{ rtpengine_source_install_dir }}"
+
+- name: 编译 daemon（不开转码）
+  ansible.builtin.command:
+    argv:
+      - make
+      - -C
+      - "{{ rtpengine_source_build_dir }}/daemon"
+      - with_transcoding=no
+      - rtpengine
+  changed_when: false
+
+- name: 安装 daemon 二进制
+  ansible.builtin.copy:
+    src: "{{ rtpengine_source_build_dir }}/daemon/rtpengine"
+    dest: "{{ rtpengine_source_install_dir }}/rtpengine"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  notify: restart rtpengine
+
+- name: 编译安装内核模块（auto 失败不阻断）
+  when:
+    - rtpengine_kernel_mode != 'userspace'
+    - rtpengine_source_kernel_policy != 'never'
+  block:
+    - name: 安装声明的内核头
+      ansible.builtin.apt:
+        name: "{{ rtpengine_kernel_headers_pkg }}"
+        state: present
+      when: rtpengine_kernel_headers_pkg
+
+    - name: 编译内核模块
+      ansible.builtin.command:
+        argv:
+          - make
+          - -C
+          - "{{ rtpengine_source_build_dir }}/kernel-module"
+      register: rtpengine_kmod
+      changed_when: false
+      failed_when: "{{ rtpengine_source_kernel_policy == 'always' }}"
+
+    - name: 安装内核模块并 depmod
+      ansible.builtin.command:
+        argv:
+          - make
+          - -C
+          - "{{ rtpengine_source_build_dir }}/kernel-module"
+          - install
+      changed_when: false
+      when: rtpengine_kmod.rc == 0
+
+- name: 写入构建信息
+  ansible.builtin.copy:
+    dest: /etc/rtpengine/build-info
+    content: "install_method=source\nbuild_method=direct\nref={{ rtpengine_source_ref }}\n"
+    owner: root
+    group: rtpengine
+    mode: "0644"
+
+- name: 渲染 systemd unit
+  ansible.builtin.template:
+    src: rtpengine-source.service.j2
+    dest: "/etc/systemd/system/{{ rtpengine_service_name }}.service"
+    mode: "0644"
+  notify: restart rtpengine
+
+- name: 重新加载 systemd
+  ansible.builtin.systemd:
+    daemon_reload: true

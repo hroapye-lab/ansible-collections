@@ -1,0 +1,22 @@
+---
+# kamailio-tls：只负责签发证书（ACME / HTTP-01）。
+# 调用方需提供：tls_domain（证书域名，非空：同时作为 CSR 的 CN 与 SAN）。
+# 产物与中间产物全部写 tls_work_dir（调用方无需关心）：
+#   {{ tls_domain }}.pem（证书链）、{{ tls_domain }}.key（私钥）
+#   account.key / csr.pem / cert.pem（ACME 中间产物）
+
+# 产物目录（证书链、私钥与 ACME 中间产物）
+tls_work_dir: "/root/ansible/keys/acme"
+# ACME 账号邮箱（到期提醒用），默认取主域名的 admin@
+tls_acme_email: "admin@{{ tls_domain }}"
+# staging=true 走 Let's Encrypt 演练环境（签发不受信证书，仅供演练）
+tls_acme_staging: false
+tls_acme_directory: >-
+  {{ 'https://acme-staging-v02.api.letsencrypt.org/directory' if tls_acme_staging
+     else 'https://acme-v02.api.letsencrypt.org/directory' }}
+# 证书剩余有效期低于该天数才续期；force_renew 强制重签（域名变更 / 演练）
+tls_remaining_days: 30
+tls_force_renew: false
+tls_key_size: 2048
+# HTTP-01 临时校验服务
+tls_webroot: /tmp/acme_webroot

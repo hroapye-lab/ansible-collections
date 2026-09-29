@@ -1,0 +1,44 @@
+[Unit]
+Description=rtpengine (source build) RTP/media Proxy Daemon
+Documentation=man:rtpengine(8)
+After=network-online.target remote-fs.target
+Requires=network-online.target
+
+[Service]
+Type=notify
+RuntimeDirectory=rtpengine
+PIDFile=/run/rtpengine/{{ rtpengine_service_name }}.pid
+User=rtpengine
+Group=rtpengine
+LimitNOFILE=150000
+ExecStart={{ rtpengine_source_install_dir }}/rtpengine -f -E --no-log-timestamps --pidfile /run/rtpengine/{{ rtpengine_service_name }}.pid --config-file {{ rtpengine_config_file }}
+
+# 硬化参考上游 ngcp-rtpengine-daemon.service
+ProtectSystem=strict
+ReadWritePaths=/var/cache/rtpengine /var/spool/rtpengine
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+LockPersonality=true
+NoNewPrivileges=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+UMask=0077
+RestrictAddressFamilies=AF_NETLINK AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=ENOSYS
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_NICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_SYS_NICE
+LimitMEMLOCK=8388608
+
+[Install]
+WantedBy=multi-user.target

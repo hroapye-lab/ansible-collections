@@ -1,0 +1,25 @@
+- name: Check if the extra disk device file exists
+  ansible.builtin.stat:
+    path: "{{ extra_disk_device }}"
+  register: disk_stat
+  changed_when: false
+
+- name: Check if the extra disk device is already mounted
+  ansible.builtin.command: "findmnt --raw --noheadings {{ extra_disk_device }}"
+  register: findmnt_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Set facts for device existence and mount status
+  ansible.builtin.set_fact:
+    extra_disk_exists: "{{ disk_stat.stat.exists }}"
+    extra_disk_is_mounted: "{{ findmnt_result.rc == 0 }}"
+  changed_when: false
+
+- name: Display message if device does not exist or is already in use
+  ansible.builtin.debug:
+    msg: >
+      Skipping tasks for extra disk '{{ extra_disk_device }}' because:
+      - Device exists: {{ extra_disk_exists }}
+      - Device is mounted: {{ extra_disk_is_mounted }}
+  when: not extra_disk_exists or extra_disk_is_mounted

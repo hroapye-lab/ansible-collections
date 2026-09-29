@@ -1,0 +1,25 @@
+---
+# 系统参数、配置渲染与服务。
+
+- name: 允许绑定非本机地址（VIP 媒体面）
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_nonlocal_bind
+    value: "1"
+    state: present
+    reload: true
+    sysctl_file: /etc/sysctl.d/99-rtpengine.conf
+
+- name: 渲染 rtpengine 配置
+  ansible.builtin.template:
+    src: rtpengine.conf.j2
+    dest: "{{ rtpengine_config_file }}"
+    mode: "0640"
+    owner: root
+    group: rtpengine
+  notify: restart rtpengine
+
+- name: 启用并启动 rtpengine 服务
+  ansible.builtin.systemd:
+    name: "{{ rtpengine_service_name }}"
+    state: started
+    enabled: true

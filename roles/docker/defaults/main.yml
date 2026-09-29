@@ -1,0 +1,68 @@
+---
+# ==== apt 源（阿里云）====
+# 是否修改系统 apt 源（写入阿里云的 /etc/apt/sources.list）。
+# 设为 false 时跳过 apt-mirror.yml，不改动系统源；Docker 安装不受影响。
+apt_mirror_enable: true
+
+# 镜像站根地址。
+# 注意：这里刻意不用清华 TUNA。TUNA 现已对国内云主机（阿里云等）的请求返回
+# HTTP 403，导致 apt update / deb822_repository 下载 GPG 公钥全部失败。
+apt_mirror_base: "https://mirrors.aliyun.com"
+
+# 发行版对应的主仓库路径（自动推导，一般无需修改）
+apt_repo_path: "{{ 'debian' if ansible_facts['distribution'] == 'Debian' else 'ubuntu' }}"
+
+# security 源：
+#   - Debian 使用阿里云的 debian-security 镜像
+#   - Ubuntu 保留官方 security 源（镜像同步有延迟，不建议替换）；
+#     如确需替换可改为 https://mirrors.aliyun.com/ubuntu
+apt_security_repo_url: "{{ apt_mirror_base + '/debian-security' if ansible_facts['distribution'] == 'Debian' else 'http://security.ubuntu.com/ubuntu' }}"
+
+# 是否启用 backports 源（默认不启用）
+apt_enable_backports: false
+
+# 仓库组件（自动推导）
+apt_components: >-
+  {{ ['main', 'contrib', 'non-free', 'non-free-firmware']
+     if ansible_facts['distribution'] == 'Debian'
+        and ansible_facts['distribution_major_version'] | int >= 12
+     else (['main', 'contrib', 'non-free'] if ansible_facts['distribution'] == 'Debian'
+           else ['main', 'restricted', 'universe', 'multiverse']) }}
+
+# ==== Docker ====
+# Docker CE apt 仓库走阿里云镜像
+docker_apt_repo_base: "{{ apt_mirror_base + '/docker-ce/linux/' + ('debian' if ansible_facts['distribution'] == 'Debian' else 'ubuntu') }}"
+docker_apt_key_url: "{{ docker_apt_repo_base }}/gpg"
+
+# 该镜像沿用了 Docker 官方的「扁平（flat）」仓库布局：
+#   <repo_base>/dists/<codename>/<suite>/binary-<arch>/Packages
+# 注意与官方文档不同：Docker 官方用的是 stable 源 + 子目录布局
+# （dists/<codename>/stable/binary-*/Packages，其 Components 就是 stable），
+# 而镜像没有单独的 stable 索引，必须把 suite 写成发行版代号
+# （bookworm/jammy...），components 写 stable。
+# 且 dists/<codename>/ 下只有 InRelease/Release（无 binary-* 子目录），
+# 所以可被 apt 直接吃下，不需要 flat-repo 的 Suites: . 写法。
+docker_apt_repo_suites:
+  - "{{ ansible_facts['distribution_release'] }}"
+docker_apt_repo_components:
+  - "{{ docker_apt_repo_suite }}"
+docker_apt_repo_suite: "stable"
+
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+# 需要加入 docker 组的用户（可选）
+docker_users: []
+
+# Docker daemon 额外配置（可选），例如：
+# docker_daemon_options:
+#   log-driver: json-file
+#   log-opts:
+#     max-size: "10m"
+#   registry-mirrors:
+#     - https://docker.mirrors.ustc.edu.cn
+docker_daemon_options: {}

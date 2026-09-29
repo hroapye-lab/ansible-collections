@@ -1,0 +1,5 @@
+---
+- name: restart rtpengine
+  ansible.builtin.systemd:
+    name: "{{ rtpengine_service_name }}"
+    state: restarted

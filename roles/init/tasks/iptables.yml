@@ -1,0 +1,41 @@
+- name: "install iptables-services for CentOS"
+  ansible.builtin.yum:
+    name: iptables-services
+    state: latest
+  when: ansible_facts['os_family'] in ["RedHat"] and ( net_access | default(true) )
+
+- name: "disable firewalld service for RedHat family"
+  ansible.builtin.systemd:
+    name: firewalld
+    enabled: false
+    state: stopped
+  when: ansible_facts['os_family'] in ["RedHat", "Amazon", "Kylin", "EulerOS", "UOS"]
+
+- name: "check ufw presence for Debian family"
+  ansible.builtin.command: command -v ufw
+  register: ufw_cmd
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] in ["Debian", "Ubuntu", "Deepin", "LinuxMint"]
+
+- name: "disable ufw service for Debian family"
+  ansible.builtin.systemd:
+    name: ufw
+    enabled: false
+    state: stopped
+  when:
+    - ansible_facts['os_family'] in ["Debian", "Ubuntu", "Deepin", "LinuxMint"]
+    - ufw_cmd is defined and ufw_cmd.rc == 0
+
+- name: "copy iptables config"
+  ansible.builtin.template:
+    src: ../files/iptables.j2
+    dest: /etc/sysconfig/iptables
+  when: ansible_facts['os_family'] in ["RedHat", "Amazon", "Kylin", "EulerOS", "UOS"]
+
+- name: "enable and start iptables service"
+  ansible.builtin.systemd:
+    name: iptables
+    enabled: true
+    state: started
+  when: ansible_facts['os_family'] in ["RedHat", "Amazon", "Kylin", "EulerOS", "UOS"]

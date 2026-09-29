@@ -1,0 +1,12 @@
+- name: Check the machine access internet
+  ansible.builtin.uri:
+    url: "https://update.cs2c.com.cn/"
+    return_content: no
+  register: check_net
+  failed_when: check_net.status != 200
+  changed_when: false
+
+- name: Set fact net_access
+  ansible.builtin.set_fact:
+    net_access: "{{ check_net.status == 200 }}"
+  when: check_net is defined and check_net.status is defined

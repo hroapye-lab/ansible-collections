@@ -1,0 +1,9 @@
+# Managed by Ansible — apt 源已切换至阿里云镜像（apt_mirror_base）
+deb {{ apt_mirror_base }}/{{ apt_repo_path }}/ {{ ansible_facts['distribution_release'] }} {{ apt_components | join(' ') }}
+deb {{ apt_mirror_base }}/{{ apt_repo_path }}/ {{ ansible_facts['distribution_release'] }}-updates {{ apt_components | join(' ') }}
+{% if apt_enable_backports %}
+deb {{ apt_mirror_base }}/{{ apt_repo_path }}/ {{ ansible_facts['distribution_release'] }}-backports {{ apt_components | join(' ') }}
+{% endif %}
+
+# 安全更新源
+deb {{ apt_security_repo_url }}/ {{ ansible_facts['distribution_release'] }}-security {{ apt_components | join(' ') }}

@@ -1,0 +1,7 @@
+---
+- name: 配置 apt 镜像源（apt_mirror_base）
+  ansible.builtin.include_tasks: apt-mirror.yml
+  when: apt_mirror_enable
+
+- name: 安装 Docker
+  ansible.builtin.include_tasks: docker-install.yml

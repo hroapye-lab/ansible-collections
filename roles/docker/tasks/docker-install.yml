@@ -1,0 +1,49 @@
+---
+- name: 移除旧的 docker.list（避免与 deb822 源重复）
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/docker.list
+    state: absent
+
+- name: 添加 Docker CE 源（阿里云镜像，deb822 格式，自动下载 GPG 公钥）
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: deb
+    uris: "{{ docker_apt_repo_base }}"
+    suites: "{{ docker_apt_repo_suites }}"
+    components: "{{ docker_apt_repo_components }}"
+    signed_by: "{{ docker_apt_key_url }}"
+    install_python_debian: true
+    state: present
+
+- name: 更新 apt 缓存（Docker 源）
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: 安装 Docker 组件
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+
+- name: 启动并启用 Docker 服务
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: 将用户加入 docker 组
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users }}"
+  when: docker_users | length > 0
+
+- name: 写入 Docker daemon 配置（如 registry-mirrors、日志等）
+  ansible.builtin.copy:
+    content: "{{ docker_daemon_options | to_nice_json }}"
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart docker
+  when: docker_daemon_options | length > 0

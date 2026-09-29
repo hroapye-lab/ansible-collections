@@ -1,0 +1,87 @@
+- name: format data disk
+  filesystem:
+    fstype: xfs
+    dev: "{{ extra_disk_device | default('/dev/vdb') }}"
+    # force: yes
+
+- name: Ensure the extra disk has an xfs filesystem
+  ansible.builtin.filesystem:
+    fstype: xfs
+    dev: "{{ extra_disk_device }}"
+    force: yes
+
+- name: Create a unique temporary mount directory
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: _ansible_mount_tmp
+    path: /mnt
+  register: temp_dir
+
+- name: Temporarily mount the extra disk
+  ansible.builtin.mount:
+    src: "{{ extra_disk_device }}"
+    path: "{{ temp_dir.path }}"
+    fstype: xfs
+    state: ephemeral 
+
+- name: Copy files from the target directory to the extra disk
+  ansible.builtin.copy:
+    src: "{{ extra_mount_point }}/"
+    dest: "{{ temp_dir.path }}"
+    remote_src: true
+
+- name: Unmount the temporary mount directory
+  ansible.builtin.mount:
+    src: "{{ extra_disk_device }}"
+    path: "{{ temp_dir.path }}"
+    state: unmounted
+
+- name: Remove the temporary mount directory
+  ansible.builtin.file:
+    path: "{{ temp_dir.path }}"
+    state: absent
+
+- name: Permanently mount the extra disk to the target directory
+  ansible.builtin.mount:
+    src: "{{ extra_disk_device }}"
+    path: "{{ extra_mount_point }}"
+    fstype: xfs
+    opts: defaults
+    state: mounted
+  notify: update fstab for extra disk
+
+- name: "Step: mkdir base directory"
+  file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: 0755
+    state: directory
+  with_items:
+    - "/opt/log"
+    - "/opt/backup"
+    - "/opt/data"
+    - "/opt/data/share"
+    - "/opt/data/containerd"
+    - "/opt/data/rancher"
+    - "/opt/data/kubelet"
+    - "/etc/sysconfig/modules"
+    - "/var/lib/rancher/rke2/agent/images"
+  tags:
+    - common_create_dir
+
+- name: copy system dir to data disks
+  ansible.builtin.copy:
+    src: "{{ item.path }}/"
+    dest: "{{ item.src }}"
+    remote_src: true
+  with_items: "{{ addon_mount_dirs }}"
+
+- name: mount and bind system dir on data disks
+  mount:
+    path: "{{ item.path }}"
+    src: "{{ item.src }}"
+    opts: bind
+    state: present
+    fstype: none
+  with_items: "{{ addon_mount_dirs }}"

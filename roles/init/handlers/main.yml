@@ -1,0 +1,13 @@
+- name: "restart sshd"
+  systemd:
+    name: sshd.service
+    daemon_reload: yes
+    enabled: yes
+    state: restarted  
+  listen: restart_sshd
+
+- name: update fstab for extra disk
+  ansible.builtin.command: ansible-fstab -a "{{ extra_disk_device }}" "{{ extra_mount_point }}" xfs defaults 0 0 >> /etc/fstab
+  args:
+    creates: /etc/fstab
+  changed_when: true

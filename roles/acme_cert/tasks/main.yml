@@ -1,0 +1,92 @@
+---
+# 只做签发：控制端生成账号钥/域名钥/CSR → 下单 → 各节点响应 HTTP-01（challenge.yml）
+# → 控制端取回 fullchain.pem。证书剩余有效期大于 tls_remaining_days 时第一阶段不返回
+# challenge_data，整体跳过（幂等，可随时重跑）。
+# 产物全部写 tls_work_dir（defaults），路径由“导出证书路径”提供给调用方。
+
+- name: 创建中间产物目录
+  ansible.builtin.file:
+    path: "{{ tls_work_dir }}"
+    state: directory
+    mode: "0700"
+  run_once: true
+  delegate_to: localhost
+
+- name: 生成 ACME 账号钥
+  community.crypto.openssl_privatekey:
+    path: "{{ tls_work_dir }}/account.key"
+    type: RSA
+    size: "{{ tls_key_size }}"
+    mode: "0600"
+  run_once: true
+  delegate_to: localhost
+
+- name: 生成域名私钥
+  community.crypto.openssl_privatekey:
+    path: "{{ tls_work_dir }}/{{ tls_domain }}.key"
+    type: RSA
+    size: "{{ tls_key_size }}"
+    mode: "0640"
+  run_once: true
+  delegate_to: localhost
+
+- name: 生成 CSR（CN 与 SAN 均为 tls_domain）
+  community.crypto.openssl_csr:
+    path: "{{ tls_work_dir }}/csr.pem"
+    privatekey_path: "{{ tls_work_dir }}/{{ tls_domain }}.key"
+    common_name: "{{ tls_domain }}"
+    subject_alt_name: ["DNS:{{ tls_domain }}"]
+    force: "{{ tls_force_renew }}"
+    mode: "0600"
+  run_once: true
+  delegate_to: localhost
+
+- name: 确保 ACME 账号存在
+  community.crypto.acme_account:
+    acme_directory: "{{ tls_acme_directory }}"
+    acme_version: 2
+    account_key_src: "{{ tls_work_dir }}/account.key"
+    state: present
+    terms_agreed: true
+    contact:
+      - "mailto:{{ tls_acme_email }}"
+  run_once: true
+  delegate_to: localhost
+
+- name: 发起 ACME 订单（无需续期时不返回 challenge_data）
+  community.crypto.acme_certificate:
+    acme_directory: "{{ tls_acme_directory }}"
+    acme_version: 2
+    account_key_src: "{{ tls_work_dir }}/account.key"
+    modify_account: false
+    challenge: http-01
+    csr: "{{ tls_work_dir }}/csr.pem"
+    dest: "{{ tls_work_dir }}/cert.pem"
+    fullchain_dest: "{{ tls_work_dir }}/{{ tls_domain }}.pem"
+    remaining_days: "{{ tls_remaining_days }}"
+    force: "{{ tls_force_renew }}"
+  register: tls_order
+  run_once: true
+  delegate_to: localhost
+
+- name: HTTP-01 校验与证书签发
+  ansible.builtin.include_tasks: challenge.yml
+  # 只看 is changed：无需续期时模块早退 changed=False；下单时恒为 True。
+  # 不能用 challenge_data 是否为空判断——CA 复用已 valid 的授权时不返回它，
+  # 但订单仍需第二步 finalize 才能取证（失败重试正是这种场景）。
+  when: tls_order is changed
+
+- name: 统一最终产物权限
+  ansible.builtin.file:
+    path: "{{ tls_work_dir }}/{{ item }}"
+    mode: "0640"
+  loop:
+    - "{{ tls_domain }}.pem"
+    - "{{ tls_domain }}.key"
+  run_once: true
+  delegate_to: localhost
+
+- name: 导出证书路径
+  ansible.builtin.set_fact:
+    acme_tls_cert: "{{ tls_work_dir }}/{{ tls_domain }}.pem"
+    acme_tls_key: "{{ tls_work_dir }}/{{ tls_domain }}.key"

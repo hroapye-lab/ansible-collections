@@ -1,0 +1,28 @@
+- name: "deploy authorized_key for dest host"
+  authorized_key:
+    user: root
+    state: present
+    key: "{{ ssh_auth_pub }}"
+  when: ssh_auth_pub is defined and ssh_auth_pub != ""
+
+- name: "opti sshd configure"
+  replace:
+    path: "/etc/ssh/sshd_config"
+    regexp: "{{ item.regexp }}"
+    replace:  "{{ item.line }}"
+  with_items:
+    - {regexp: "^#?ClientAliveInterval.*$" ,line: "ClientAliveInterval 6"}
+    - {regexp: "^#?ClientAliveCountMax.*$" ,line: "ClientAliveCountMax 15"}
+    - {regexp: "^#?UseDNS .*$" ,line: "UseDNS no"}
+  notify: restart_sshd
+
+- name: "close password for root"
+  replace:
+    path: "/etc/ssh/sshd_config"
+    regexp: "{{ item.regexp }}"
+    replace:  "{{ item.line }}"
+  with_items:
+    - {regexp: "^#?PasswordAuthentication.*$" ,line: "PasswordAuthentication no"}
+    # - {regexp: "^#?Port .+$" ,line: "Port 32222"}
+  when: close_password == "yes"
+  notify: restart_sshd

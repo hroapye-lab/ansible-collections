@@ -1,0 +1,32 @@
+---
+# rtpengine role 执行流程：
+#   安装（apt | source）→ 系统配置与服务
+
+- name: 安装 rtpengine
+  when: rtpengine_install_enabled | default(true)
+  block:
+    - name: apt 仓库安装（Sipwise / 系统源）
+      ansible.builtin.include_tasks: apt.yml
+      when: not rtpengine_source_build
+
+    - name: 准备源码（clone + clean）
+      ansible.builtin.include_tasks: prepare.yml
+      when: rtpengine_source_build
+
+    - name: 源码安装：direct（直接 make）
+      ansible.builtin.include_tasks: direct.yml
+      when:
+        - rtpengine_source_build
+        - not rtpengine_dpkg_build
+
+    - name: 源码安装：dpkg（官方打包）
+      ansible.builtin.include_tasks: dpkg.yml
+      when:
+        - rtpengine_source_build
+        - rtpengine_dpkg_build
+
+- name: 系统参数与 rtpengine 服务
+  ansible.builtin.include_tasks: service.yml
+
+- name: 应用变更
+  ansible.builtin.meta: flush_handlers

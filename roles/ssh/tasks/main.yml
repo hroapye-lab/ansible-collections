@@ -1,0 +1,14 @@
+---
+- name: 检查控制机上的公钥文件是否存在
+  ansible.builtin.stat:
+    path: "{{ ssh_pubkey_source }}"
+  delegate_to: localhost
+  run_once: true
+  register: ssh_pubkey_source_stat
+
+- name: 复制 SSH 公钥到容器（写入 {{ ssh_copy_user }} 的 authorized_keys）
+  ansible.builtin.authorized_key:
+    user: "{{ ssh_copy_user }}"
+    state: present
+    key: "{{ lookup('file', ssh_pubkey_source) }}"
+  when: ssh_pubkey_source_stat.stat.exists

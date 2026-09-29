@@ -1,0 +1,23 @@
+- name: 'Step: modify hostname 0'
+  hostname:
+    name: "{{ inventory_hostname.replace('.', '-') }}"
+  when: hostname_format == 'inventory_hostname'
+  tags:
+    - hostname
+
+- name: 'Step: modify hostname 1'
+  hostname:
+    name: "{{ group_names[0] | default('single') }}-{{ node_ip.replace('.', '-') }}-{{ inventory_hostname.replace('.', '-') }}"
+  when: hostname_format == 'group-ip-inventory'
+  tags:
+    - hostname
+
+- name: 'Step: modify etc hosts for resolve'
+  lineinfile:
+    path: /etc/hosts
+    regexp: "{{ group_names[0] | default('single') }}-{{ node_ip.replace('.', '-') }}-{{ inventory_hostname.replace('.', '-') }}"
+    line:  "127.0.0.1 {{ group_names[0] }}-{{ node_ip.replace('.', '-') }}-{{ inventory_hostname.replace('.','-') }}"
+    state: present
+  when: hostname_format == 'group-ip-inventory'
+  tags:
+    - hostname

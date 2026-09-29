@@ -1,0 +1,121 @@
+---
+# apt 安装：第三方源/系统源、包安装（exact_version 开关）、版本断言。
+
+- name: 配置第三方仓库
+  block:
+    - name: 检查已安装包
+      ansible.builtin.package_facts:
+
+    - name: 安装 keyring
+      when:
+        - rtpengine_3rd_repo_keyring_url | length > 0
+        - "'ngcp-archive-keyring' not in ansible_facts.packages"
+      block:
+        - name: 下载 keyring
+          ansible.builtin.get_url:
+            url: "{{ rtpengine_3rd_repo_keyring_url }}"
+            dest: /tmp/rtpengine-3rd-repo-keyring.deb
+            mode: "0644"
+
+        - name: 安装 keyring deb
+          ansible.builtin.apt:
+            deb: /tmp/rtpengine-3rd-repo-keyring.deb
+
+    - name: 导入 PPA 公钥
+      when: rtpengine_3rd_repo_keyring_path | length > 0
+      block:
+        - name: 建立 keyrings 目录
+          ansible.builtin.file:
+            path: "{{ rtpengine_3rd_repo_keyring_path | dirname }}"
+            state: directory
+            mode: "0755"
+
+        - name: 下载公钥
+          ansible.builtin.get_url:
+            url: "{{ rtpengine_3rd_repo_key_url }}"
+            dest: /tmp/rtpengine-3rd-repo-key.asc
+            mode: "0644"
+            force: true
+          changed_when: false
+
+        - name: dearmor 公钥到 keyring
+          ansible.builtin.command:
+            cmd: >-
+              gpg --dearmor --yes --output {{ rtpengine_3rd_repo_keyring_path }}
+              /tmp/rtpengine-3rd-repo-key.asc
+            creates: "{{ rtpengine_3rd_repo_keyring_path }}"
+
+    - name: 写入 sources.list
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/rtpengine-3rd-repo.list
+        content: "deb{{ ' [signed-by=' ~ rtpengine_3rd_repo_keyring_path ~ ']' if rtpengine_3rd_repo_keyring_path | length > 0 else '' }} {{ rtpengine_3rd_repo_url }} {{ rtpengine_3rd_repo_dist }} main\n"
+        mode: "0644"
+  when: rtpengine_use_3rd_repo
+
+- name: 未启用第三方源时移除残留 sources 文件
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/rtpengine-3rd-repo.list
+    state: absent
+  when: not rtpengine_use_3rd_repo
+
+- name: 更新 apt 索引（换源后强制刷新）
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ 0 if rtpengine_use_3rd_repo else 3600 }}"
+
+- name: 安装 rtpengine 软件包（跟随仓库候选版本）
+  ansible.builtin.apt:
+    name: "{{ rtpengine_packages }}"
+    state: present
+  when: not rtpengine_exact_version or not rtpengine_target_version
+
+- name: 安装指定版本 daemon（可降级）
+  block:
+    - name: 安装 daemon 精确版本
+      ansible.builtin.apt:
+        name: "{{ rtpengine_package_daemon_name }}={{ rtpengine_target_version }}"
+        state: present
+        allow_downgrade: "{{ rtpengine_allow_downgrade }}"
+      notify: restart rtpengine
+
+    - name: 安装配套 utils
+      ansible.builtin.apt:
+        name: "{{ rtpengine_packages | difference([rtpengine_package_daemon_name]) }}"
+        state: present
+  when: rtpengine_exact_version and rtpengine_target_version
+
+- name: 安装内核模块包
+  ansible.builtin.apt:
+    name: "{{ rtpengine_kernel_packages }}"
+    state: present
+  when: rtpengine_kernel_mode != 'userspace'
+
+- name: 收集已安装包版本
+  ansible.builtin.package_facts:
+
+- name: 记录已安装 daemon 版本
+  ansible.builtin.set_fact:
+    rtpengine_installed_version: >-
+      {{ ansible_facts.packages[rtpengine_package_daemon_name][0].version
+         if rtpengine_package_daemon_name in ansible_facts.packages
+         else '' }}
+
+- name: 校验版本不低于最低要求
+  ansible.builtin.assert:
+    that:
+      - rtpengine_installed_version != ''
+      - rtpengine_allow_old_apt
+        or rtpengine_installed_version is version(rtpengine_min_daemon_version, '>=')
+    fail_msg: >-
+      {{ rtpengine_package_daemon_name }}={{ rtpengine_installed_version | default('未安装') }}
+      低于 {{ rtpengine_min_daemon_version }}（换源或设 allow_old_apt=true）。
+
+- name: 校验 daemon 属于配置的 MR
+  ansible.builtin.assert:
+    that:
+      - not rtpengine_require_mr_match
+        or rtpengine_3rd_repo_mr in rtpengine_installed_version
+    fail_msg: >-
+      {{ rtpengine_installed_version }} 不属于 MR {{ rtpengine_3rd_repo_mr }}
+      （apt 不降级；降级需 exact + allow_downgrade）。
+  when: rtpengine_use_3rd_repo

@@ -1,0 +1,4 @@
+---
+# 集合支持的 ansible-core 版本下限。
+# 依据：roles/docker 使用 ansible.builtin.deb822_repository（ansible-core 2.15 新增）。
+requires_ansible: ">=2.15.0"

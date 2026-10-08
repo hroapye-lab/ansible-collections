@@ -1,0 +1,46 @@
+---
+# deploy_compose —— 部署单个 Docker Compose 项目。
+#
+# 必填变量（不给默认值，缺了 Ansible 直接报未定义）：
+#   compose_src        源 compose：控制机上的目录，或压缩包 URL（含 :// 即按 URL 处理）
+#   compose_dir        目标主机上的 compose 项目目录
+#
+# 源目录内容原样推送，role 不做过滤；哪些内容不该进目标机，由调用方在准备源目录时决定。
+#
+# 压缩包 URL 模式：在控制机下载、解包到 compose_tmp_dir 下以 URL 的 sha1 命名的目录，
+# 同一 URL 第二次运行不再下载；解包结果经 compose_archive_subdir 定位项目根。
+#
+# 形态：profile 是项目内服务组标注，可选、不强制。模板项不写 profile 即默认渲染；
+# 写了 profile 的项，命中 compose_profiles 才渲染。容器层面的 profile（哪些服务
+# 参与启动）由项目自己的 .env 承载，本 role 不传 --profile、不干预。
+#
+# 容器：由 community.docker 模块驱动。
+
+# 本机选中的服务组集合
+compose_profiles: []
+
+# 需要按环境渲染的模板清单，逐项 {src, dst, profile?}：
+#   - src：控制机上的模板路径（写什么用什么，建议绝对路径）
+#   - dst：渲染结果落到项目目录内的相对路径
+#   - profile：该模板属于哪个服务组；写 all（或省略不写）即全局项，任何主机都渲染
+#   - mode：可选的落盘权限；省略时用 0644
+compose_templates: []
+
+# 模板可能要遍历的额外数据，给个空字典兜底：主机没提供时退化成空循环，
+# 而不是让 {% for k, v in compose_extra_properties.items() %} 报未定义
+compose_extra_properties: {}
+compose_extra_environment_variables: {}
+
+# ==== 压缩包 URL 模式 ====
+# 控制机上的临时父目录：下载与解包落在 <该目录>/<URL 的 sha1>/ 下，不做清理
+compose_tmp_dir: /tmp
+# 包内项目根目录（相对解包根）；留空表示解包根即项目根
+compose_archive_subdir: ""
+# 传给 get_url 的校验值（如 sha256:...）；留空只按归档是否存在判断
+compose_checksum: ""
+
+# present（默认，启动/更新）| absent（停止并移除）
+compose_state: present
+# state=absent 时是否清理数据：移除 compose 卷（named 与 anonymous）并删除项目目录。
+# 指向项目目录内的 bind mount（如 ./data）会随目录一起删掉，默认 false 不动数据。
+compose_cleanup_data: false

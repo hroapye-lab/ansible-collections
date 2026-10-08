@@ -1,0 +1,102 @@
+---
+# 部署单个 Docker Compose 项目（目录形式 + profile 服务组）。
+#
+# - 素材：源 compose 以路径传入（compose_src），整目录推送到 compose_dir；compose_src
+#   含 :// 时按压缩包 URL 处理——在控制机下载、按 URL 的 sha1 缓存、解包后再推送。
+#   role 不做 git，也不做内容过滤——源目录里放什么就推什么，该排除什么由调用方准备源目录时决定。
+# - 形态：profile 是项目内服务组标注，可选、不强制。模板项写 all（或不写）即全局渲染，
+#   写了具体服务组则命中 compose_profiles 才渲染；容器侧 profile 由项目 .env 承载。
+# - 容器：community.docker.docker_compose_v2 模块（启动 / 重启 / 停止移除）。
+
+- name: 启动/更新（state=present）
+  when: compose_state == 'present'
+  block:
+    - name: 解析源路径
+      ansible.builtin.set_fact:
+        # 压缩包 URL 模式的工作目录：以 URL 的 sha1 命名，同一 URL 复用、不重复下载
+        compose_tmp_workdir: "{{ compose_tmp_dir }}/{{ compose_src | hash('sha1') }}"
+        # 源目录：URL 模式取解包目录（可再进一层 compose_archive_subdir），否则用传入路径
+        compose_src_local: >-
+          {{ (compose_tmp_dir ~ '/' ~ (compose_src | hash('sha1')) ~ '/tree'
+              ~ ('/' ~ compose_archive_subdir if compose_archive_subdir else ''))
+             if '://' in compose_src else compose_src }}
+
+    - name: 创建解包目录（压缩包 URL 模式）
+      # get_url 不会自建父目录，这里一次把工作目录与解包目录建出来
+      ansible.builtin.file:
+        path: "{{ compose_tmp_workdir }}/tree"
+        state: directory
+      delegate_to: localhost
+      when: "'://' in compose_src"
+
+    - name: 下载压缩包（压缩包 URL 模式）
+      # 归档已存在则跳过下载；给了 compose_checksum 时先比对内容，不匹配才重下
+      ansible.builtin.get_url:
+        url: "{{ compose_src }}"
+        dest: "{{ compose_tmp_workdir }}/archive"
+        checksum: "{{ compose_checksum }}"
+      delegate_to: localhost
+      when: "'://' in compose_src"
+
+    - name: 解包（压缩包 URL 模式）
+      ansible.builtin.unarchive:
+        src: "{{ compose_tmp_workdir }}/archive"
+        dest: "{{ compose_tmp_workdir }}/tree"
+        remote_src: true
+      delegate_to: localhost
+      when: "'://' in compose_src"
+
+    - name: 推送项目目录
+      # 整目录原样复制：子目录与空目录都在，隐藏文件也在；文件权限沿用源文件
+      # （mode: preserve 只作用于文件，新建目录用目标机默认权限）
+      ansible.builtin.copy:
+        src: "{{ compose_src_local }}/"
+        dest: "{{ compose_dir }}/"
+        # 保留源文件权限
+        mode: preserve
+      register: compose_copy_result
+
+    - name: 渲染模板（按 profile 筛选）
+      # profile 的写法与判定（依据本机 compose_profiles）：
+      #   profile: all 或 不写 profile  → 全局项，任何主机都渲染
+      #   profile: <服务组> → 该组在本机 compose_profiles 里才渲染
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ compose_dir }}/{{ item.dst }}"
+        mode: "{{ item.mode | default('0644') }}"
+      loop: "{{ compose_templates }}"
+      when: item.profile | default('all') == 'all' or item.profile in compose_profiles
+      register: compose_render_result
+
+    - name: 启动/更新容器
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        remove_orphans: true
+      register: compose_up_result
+
+    - name: 配置文件有更新，重启容器使其生效
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        state: restarted
+      when: not compose_up_result.changed and (compose_copy_result.changed or compose_render_result.changed)
+
+- name: 停止并移除（state=absent）
+  when: compose_state == 'absent'
+  block:
+    - name: 检查项目目录是否存在
+      ansible.builtin.stat:
+        path: "{{ compose_dir }}"
+      register: compose_dir_stat
+
+    - name: 停止并移除容器
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        state: absent
+        remove_volumes: "{{ compose_cleanup_data | bool }}"
+      when: compose_dir_stat.stat.exists
+
+    - name: 删除项目目录
+      ansible.builtin.file:
+        path: "{{ compose_dir }}"
+        state: absent
+      when: compose_cleanup_data | bool and compose_dir_stat.stat.exists

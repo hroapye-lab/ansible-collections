@@ -13,6 +13,7 @@
 | `hroapy.misc.zed` | 分发 Zed remote server |
 | `hroapy.misc.init` | 主机基础初始化（包 / 主机名 / iptables / 磁盘 / 内核） |
 | `hroapy.misc.compose` | 部署 Docker Compose 应用 |
+| `hroapy.misc.deploy_compose` | 部署 Docker Compose 应用（源为本地路径或压缩包 URL，模板按 profile 选） |
 | `hroapy.misc.acme_cert` | ACME（HTTP-01）签发证书 |
 | `hroapy.misc.rtpengine` | 安装 / 配置 rtpengine |
 

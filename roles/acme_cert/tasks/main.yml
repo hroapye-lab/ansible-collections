@@ -41,6 +41,11 @@
   run_once: true
   delegate_to: localhost
 
+# 注意：不要给这个任务加 contact。Let's Encrypt 自 2025-06 起不再存储账号邮箱，
+# 创建/更新账号时接口也不再返回 contact（请求里的值被忽略，仍返回 200）；
+# 而模块在 state=present 下会拿 contact 与 CA 回显值比较，传入非空 contact
+# 会让本任务每次都判定为 changed。
+# 参考：https://community.letsencrypt.org/t/support-ended-for-expiration-notification-emails/238173
 - name: 确保 ACME 账号存在
   community.crypto.acme_account:
     acme_directory: "{{ tls_acme_directory }}"
@@ -48,8 +53,6 @@
     account_key_src: "{{ tls_work_dir }}/account.key"
     state: present
     terms_agreed: true
-    contact:
-      - "mailto:{{ tls_acme_email }}"
   run_once: true
   delegate_to: localhost
 

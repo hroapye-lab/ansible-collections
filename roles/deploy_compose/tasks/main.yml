@@ -5,7 +5,9 @@
 #   含 :// 时按压缩包 URL 处理——在控制机下载、按 URL 的 sha1 缓存、解包后再推送。
 #   role 不做 git，也不做内容过滤——源目录里放什么就推什么，该排除什么由调用方准备源目录时决定。
 # - 形态：profile 是项目内服务组标注，可选、不强制。模板项写 all（或不写）即全局渲染，
-#   写了具体服务组则命中 compose_profiles 才渲染；容器侧 profile 由项目 .env 承载。
+#   写了具体服务组则命中 compose_profiles 才渲染；compose_profiles 同时决定容器侧
+#   启用哪些服务组——项目用 .env.j2 把它渲染成 .env 里的 COMPOSE_PROFILES，
+#   role 保证该行存在。
 # - 容器：community.docker.docker_compose_v2 模块（启动 / 重启 / 停止移除）。
 
 - name: 启动/更新（state=present）
@@ -47,13 +49,11 @@
       when: "'://' in compose_src"
 
     - name: 推送项目目录
-      # 整目录原样复制：子目录与空目录都在，隐藏文件也在；文件权限沿用源文件
-      # （mode: preserve 只作用于文件，新建目录用目标机默认权限）
-      ansible.builtin.copy:
+      ansible.posix.synchronize:
         src: "{{ compose_src_local }}/"
         dest: "{{ compose_dir }}/"
-        # 保留源文件权限
-        mode: preserve
+        # 让 rsync 继承 ansible 的 ssh 配置，如果异常检查 ssh 配置的兼容问题
+        use_ssh_args: true
       register: compose_copy_result
 
     - name: 渲染模板（按 profile 筛选）
@@ -67,6 +67,18 @@
       loop: "{{ compose_templates }}"
       when: item.profile | default('all') == 'all' or item.profile in compose_profiles
       register: compose_render_result
+
+    - name: 写入 COMPOSE_PROFILES
+      # 带 profile 的服务若 .env 里没有这行，docker compose up 会静默不起它们。
+      # 值来自 compose_profiles（项目 .env.j2 通常已渲染同一行，因此这里常无变化）；
+      # 行缺失时 lineinfile 追加到文件末尾。空列表不写，.env 保持项目自己的内容。
+      ansible.builtin.lineinfile:
+        path: "{{ compose_dir }}/.env"
+        regexp: '^COMPOSE_PROFILES='
+        line: "COMPOSE_PROFILES={{ compose_profiles | join(',') }}"
+        create: true
+        mode: "0644"
+      when: compose_profiles | length > 0
 
     - name: 启动/更新容器
       community.docker.docker_compose_v2:

@@ -5,23 +5,23 @@
 #   compose_src        源 compose：控制机上的目录，或压缩包 URL（含 :// 即按 URL 处理）
 #   compose_dir        目标主机上的 compose 项目目录
 #
-# 源目录内容原样推送，role 不做过滤；哪些内容不该进目标机，由调用方在准备源目录时决定。
+# 源目录内容原样推送，不该进目标机的用 compose_sync_exclude 排除。
 #
 # 压缩包 URL 模式：在控制机下载、解包到 compose_tmp_dir 下以 URL 的 sha1 命名的目录，
 # 同一 URL 第二次运行不再下载；解包结果经 compose_archive_subdir 定位项目根。
 #
-# 形态：profile 是项目内服务组标注，可选、不强制。模板项不写 profile 即默认渲染；
-# 写了 profile 的项，命中 compose_profiles 才渲染。容器层面的 profile（哪些服务
-# 参与启动）由项目自己的 .env 承载：项目把该值写进 .env.j2（COMPOSE_PROFILES），
-# 随模板一起渲染；role 不传 --profile，只保证 .env 里存在这一行，
-# 目标机手工 docker compose up -d 与 ansible 部署保持一致。
+# 形态：profile 是项目内服务组标注，可选、不强制。项目把选中的服务组写进 .env.j2
+# 渲染成 .env 里的 COMPOSE_PROFILES；role 不传 --profile，只保证该行存在。
 #
 # 容器：由 community.docker 模块驱动。
 
-# 本机选中的服务组集合：填项目 compose 里 services[*].profiles 的组名（不是服务名），
-# 调用方只给组名，不出现服务名。组名写错只会少起容器，compose 不报错，部署后
-# 用 docker compose ps 核对。空列表 = 不写 .env，完全以项目 .env.j2 的值为准。
+# 本机选中的服务组集合：填项目 compose 里 services[*].profiles 的组名（不是服务名）。
+# 空列表 = 不写 .env，完全以项目 .env.j2 的值为准。
 compose_profiles: []
+
+# 推送时排除的 rsync 模式，任意层级匹配
+compose_sync_exclude:
+  - "*.j2"
 
 # 需要按环境渲染的模板清单，逐项 {src, dst, profile?}：
 #   - src：控制机上的模板路径（写什么用什么，建议绝对路径）

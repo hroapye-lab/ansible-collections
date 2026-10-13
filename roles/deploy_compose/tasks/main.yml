@@ -2,13 +2,7 @@
 # 部署单个 Docker Compose 项目（目录形式 + profile 服务组）。
 #
 # - 素材：源 compose 以路径传入（compose_src），整目录推送到 compose_dir；compose_src
-#   含 :// 时按压缩包 URL 处理——在控制机下载、按 URL 的 sha1 缓存、解包后再推送。
-#   role 不做 git，也不做内容过滤——源目录里放什么就推什么，该排除什么由调用方准备源目录时决定。
-# - 形态：profile 是项目内服务组标注，可选、不强制。模板项写 all（或不写）即全局渲染，
-#   写了具体服务组则命中 compose_profiles 才渲染；compose_profiles 同时决定容器侧
-#   启用哪些服务组——项目用 .env.j2 把它渲染成 .env 里的 COMPOSE_PROFILES，
-#   role 保证该行存在。
-# - 容器：community.docker.docker_compose_v2 模块（启动 / 重启 / 停止移除）。
+#   含 :// 时按压缩包 URL 处理。role 不做 git，也不做内容过滤：该排除什么由 compose_sync_exclude 决定。
 
 - name: 启动/更新（state=present）
   when: compose_state == 'present'
@@ -32,7 +26,7 @@
       when: "'://' in compose_src"
 
     - name: 下载压缩包（压缩包 URL 模式）
-      # 归档已存在则跳过下载；给了 compose_checksum 时先比对内容，不匹配才重下
+      # 归档已存在则不重下
       ansible.builtin.get_url:
         url: "{{ compose_src }}"
         dest: "{{ compose_tmp_workdir }}/archive"
@@ -54,12 +48,10 @@
         dest: "{{ compose_dir }}/"
         # 让 rsync 继承 ansible 的 ssh 配置，如果异常检查 ssh 配置的兼容问题
         use_ssh_args: true
+        rsync_opts: "{{ compose_sync_exclude | map('regex_replace', '^', '--exclude=') | list }}"
       register: compose_copy_result
 
     - name: 渲染模板（按 profile 筛选）
-      # profile 的写法与判定（依据本机 compose_profiles）：
-      #   profile: all 或 不写 profile  → 全局项，任何主机都渲染
-      #   profile: <服务组> → 该组在本机 compose_profiles 里才渲染
       ansible.builtin.template:
         src: "{{ item.src }}"
         dest: "{{ compose_dir }}/{{ item.dst }}"
@@ -69,9 +61,7 @@
       register: compose_render_result
 
     - name: 写入 COMPOSE_PROFILES
-      # 带 profile 的服务若 .env 里没有这行，docker compose up 会静默不起它们。
-      # 值来自 compose_profiles（项目 .env.j2 通常已渲染同一行，因此这里常无变化）；
-      # 行缺失时 lineinfile 追加到文件末尾。空列表不写，.env 保持项目自己的内容。
+      # 缺这行时 docker compose up 会静默跳过带 profile 的服务
       ansible.builtin.lineinfile:
         path: "{{ compose_dir }}/.env"
         regexp: '^COMPOSE_PROFILES='

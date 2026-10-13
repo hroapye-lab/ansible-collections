@@ -79,6 +79,18 @@
         mode: "0644"
       when: compose_profiles | length > 0
 
+    - name: 准备挂载目录（按 profile 筛选）
+      ansible.builtin.file:
+        path: "{{ compose_dir }}/{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default(omit) }}"
+        group: "{{ item.group | default(omit) }}"
+        mode: "{{ item.mode | default(omit) }}"
+      loop: "{{ compose_mount_dirs }}"
+      when: item.profile | default('all') == 'all' or item.profile in compose_profiles
+      loop_control:
+        label: "{{ item.path }}"
+
     - name: 启动/更新容器
       community.docker.docker_compose_v2:
         project_src: "{{ compose_dir }}"

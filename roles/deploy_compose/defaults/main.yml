@@ -26,6 +26,12 @@ compose_push_method: copy
 compose_sync_exclude:
   - "*.j2"
 
+# 需要初始化的容器挂载目录，逐项 {path, owner?, group?, mode?, profile?}：
+#   - path：目录，相对 compose_dir
+#   - owner / group：数字 uid / gid（目标机没有容器内的用户）
+#   - profile：该目录属于哪个服务组；写 all（或省略不写）即全局项，任何主机都建
+compose_mount_dirs: []
+
 # 需要按环境渲染的模板清单，逐项 {src, dst, profile?}：
 #   - src：控制机上的模板路径（写什么用什么，建议绝对路径）
 #   - dst：渲染结果落到项目目录内的相对路径

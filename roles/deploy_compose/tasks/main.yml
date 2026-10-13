@@ -2,7 +2,7 @@
 # 部署单个 Docker Compose 项目（目录形式 + profile 服务组）。
 #
 # - 素材：源 compose 以路径传入（compose_src），整目录推送到 compose_dir；compose_src
-#   含 :// 时按压缩包 URL 处理。role 不做 git，也不做内容过滤：该排除什么由 compose_sync_exclude 决定。
+#   含 :// 时按压缩包 URL 处理。role 不做 git，也不做内容过滤：sync 推送的排除项由 compose_sync_exclude 决定。
 
 - name: 启动/更新（state=present）
   when: compose_state == 'present'
@@ -42,14 +42,23 @@
       delegate_to: localhost
       when: "'://' in compose_src"
 
-    - name: 推送项目目录
+    - name: 推送项目目录（copy）
+      ansible.builtin.copy:
+        src: "{{ compose_src_local }}/"
+        dest: "{{ compose_dir }}/"
+        mode: preserve
+      when: compose_push_method == 'copy'
+      register: compose_push_copy
+
+    - name: 推送项目目录（sync）
       ansible.posix.synchronize:
         src: "{{ compose_src_local }}/"
         dest: "{{ compose_dir }}/"
         # 让 rsync 继承 ansible 的 ssh 配置，如果异常检查 ssh 配置的兼容问题
         use_ssh_args: true
         rsync_opts: "{{ compose_sync_exclude | map('regex_replace', '^', '--exclude=') | list }}"
-      register: compose_copy_result
+      when: compose_push_method == 'sync'
+      register: compose_push_sync
 
     - name: 渲染模板（按 profile 筛选）
       ansible.builtin.template:
@@ -80,7 +89,7 @@
       community.docker.docker_compose_v2:
         project_src: "{{ compose_dir }}"
         state: restarted
-      when: not compose_up_result.changed and (compose_copy_result.changed or compose_render_result.changed)
+      when: not compose_up_result.changed and (compose_push_copy.changed or compose_push_sync.changed or compose_render_result.changed)
 
 - name: 停止并移除（state=absent）
   when: compose_state == 'absent'

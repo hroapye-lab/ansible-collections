@@ -5,7 +5,7 @@
 #   compose_src        源 compose：控制机上的目录，或压缩包 URL（含 :// 即按 URL 处理）
 #   compose_dir        目标主机上的 compose 项目目录
 #
-# 源目录内容原样推送，不该进目标机的用 compose_sync_exclude 排除。
+# 源目录内容原样推送；copy 方式不做过滤，要排除就用 sync 方式（见 compose_sync_exclude）。
 #
 # 压缩包 URL 模式：在控制机下载、解包到 compose_tmp_dir 下以 URL 的 sha1 命名的目录，
 # 同一 URL 第二次运行不再下载；解包结果经 compose_archive_subdir 定位项目根。
@@ -19,7 +19,10 @@
 # 空列表 = 不写 .env，完全以项目 .env.j2 的值为准。
 compose_profiles: []
 
-# 推送时排除的 rsync 模式，任意层级匹配
+# 推送方式：copy（Ansible 逐文件）| sync（rsync，一次进程）
+compose_push_method: copy
+
+# sync 推送时排除的 rsync 模式，任意层级匹配
 compose_sync_exclude:
   - "*.j2"
 

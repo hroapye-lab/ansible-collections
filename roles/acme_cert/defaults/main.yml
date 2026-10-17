@@ -1,9 +1,9 @@
 ---
-# acme_cert：只负责签发证书（ACME / HTTP-01），与具体项目无关。
-# 调用方需提供：tls_domain（证书域名，非空：同时作为 CSR 的 CN 与 SAN）。
-# 产物与中间产物全部写 tls_work_dir（调用方无需关心）：
-#   {{ tls_domain }}.pem（证书链）、{{ tls_domain }}.key（私钥）
-#   account.key / csr.pem / cert.pem（ACME 中间产物）
+# acme_cert：只负责签发证书（ACME：HTTP-01 或 DNS-01 + acme-dns），与具体项目无关。
+# 调用方需提供：tls_domain（证书域名，非空：作为 CSR 的 CN）。
+# 文件全部写 tls_work_dir（调用方无需关心）：
+#   {{ tls_work_dir }}/account.key（ACME 账号，跨证书共享）
+#   {{ tls_domain_dir }}/csr.pem / cert.pem / fullchain.pem / privkey.pem / acme-dns.json
 
 # staging=true 走 Let's Encrypt 演练环境（签发不受信证书，仅供演练）
 tls_acme_staging: false
@@ -16,9 +16,51 @@ tls_acme_directory: >-
 # 需要完全自定义时直接覆盖 tls_work_dir（如 -e tls_work_dir=/tmp/acme-debug，此时不再加后缀）。
 tls_work_dir_base: "/root/ansible/keys/acme"
 tls_work_dir: "{{ tls_work_dir_base }}{{ '-staging' if tls_acme_staging else '' }}"
+# 每个域名的文件放在 hash 子目录，目录内文件名固定
+tls_domain_dir: "{{ tls_work_dir }}/{{ tls_domain | hash('sha256') }}"
 # 证书剩余有效期低于该天数才续期；force_renew 强制重签（域名变更 / 演练）
 tls_remaining_days: 30
 tls_force_renew: false
 tls_key_size: 2048
 # HTTP-01 临时校验服务
 tls_webroot: /tmp/acme_webroot
+
+# ---------------------------------------------------------------------------
+# 校验方式
+# ---------------------------------------------------------------------------
+# http-01：保持原有行为（目标节点需要开放 80 端口）
+# dns-01 ：通过 acme-dns 完成 DNS-01（节点无需开放端口，支持泛域名）
+tls_challenge: http-01
+
+# ---------------------------------------------------------------------------
+# acme-dns（仅在 tls_challenge=dns-01 时使用）
+# ---------------------------------------------------------------------------
+# 首次运行 POST /register，结果写入 tls_acme_dns_state_file，后续运行直接复用。
+# 重新注册：删除对应的 state 文件后重跑。
+# 如果已经在别处注册过，可直接通过 tls_acme_dns_clients 提供（优先于状态文件）。
+tls_acme_dns_register_url: "https://auth.acme-dns.io/register"
+tls_acme_dns_update_url: "https://auth.acme-dns.io/update"
+# acme-dns 状态文件放在域名目录下，固定文件名；内容只包含该域名的
+# username/password/subdomain/fulldomain，权限 0600，不要提交到版本库。
+tls_acme_dns_state_file: "{{ tls_domain_dir }}/acme-dns.json"
+# 自建 acme-dns 使用自签证书时，需要显式设为 false（或自行提供可信 CA）
+tls_acme_dns_validate_certs: true
+# 注册时限制允许调用 /update 的来源（CIDR 列表）；留空表示不限制
+tls_acme_dns_allowfrom: []
+
+# 已注册的 client；key 为去掉 *. 的域名。若提供，则跳过 /register。
+# tls_acme_dns_clients:
+#   example.com:
+#     username: "..."
+#     password: "..."
+#     subdomain: "..."
+#     fulldomain: "..."
+#     update_url: "..."   # 可选，默认 tls_acme_dns_update_url
+tls_acme_dns_clients: {}
+
+# 控制端用于校验 TXT 的 DNS resolver 和重试参数
+# 需要控制端安装 dig（dnsutils / bind-utils）
+# Cloudflare 等 DNS 服务商需要把 CNAME 设为 DNS only，不能开启代理。
+tls_acme_dns_resolver: "1.1.1.1"
+tls_acme_dns_propagation_retries: 24
+tls_acme_dns_propagation_delay: 5

@@ -1,0 +1,83 @@
+---
+# acme-dns 一次性 bootstrap：
+#   首次运行：POST /register，凭据写入 tls_acme_dns_state_file（0600），并输出 CNAME 目标
+#   后续运行：直接读状态文件，跳过注册
+# 该文件在 tls_challenge=dns-01 时、创建 ACME 订单之前执行。
+
+- name: 计算 acme-dns 使用的域名
+  ansible.builtin.set_fact:
+    _acme_dns_domain: >-
+      {{ tls_domain | regex_replace('^\*\.', '') }}
+  run_once: true
+  delegate_to: localhost
+
+- name: 读取已有 acme-dns 状态
+  ansible.builtin.slurp:
+    src: "{{ tls_acme_dns_state_file }}"
+  register: _acme_dns_state_raw
+  failed_when: false
+  run_once: true
+  delegate_to: localhost
+
+- name: 解析 acme-dns 状态
+  ansible.builtin.set_fact:
+    _acme_dns_state_client: >-
+      {{ (_acme_dns_state_raw.content | b64decode | from_json)
+         if (_acme_dns_state_raw.content is defined
+             and (_acme_dns_state_raw.content | length > 0))
+         else {} }}
+  run_once: true
+  delegate_to: localhost
+
+- name: 读取该域名已有的 acme-dns 配置
+  ansible.builtin.set_fact:
+    _acme_dns_client: >-
+      {{ tls_acme_dns_clients.get(_acme_dns_domain, {})
+         if (tls_acme_dns_clients.get(_acme_dns_domain, {}) | length > 0)
+         else _acme_dns_state_client }}
+  no_log: true
+  run_once: true
+  delegate_to: localhost
+
+- name: 注册 acme-dns 客户端（仅当没有现成配置）
+  ansible.builtin.uri:
+    url: "{{ tls_acme_dns_register_url }}"
+    method: POST
+    body_format: json
+    body:
+      allowfrom: "{{ tls_acme_dns_allowfrom }}"
+    status_code: [200, 201]
+    validate_certs: "{{ tls_acme_dns_validate_certs }}"
+    timeout: 30
+  register: _acme_dns_reg
+  when: _acme_dns_client | length == 0
+  no_log: true
+  run_once: true
+  delegate_to: localhost
+
+- name: 使用注册结果
+  ansible.builtin.set_fact:
+    _acme_dns_client: "{{ _acme_dns_reg.json }}"
+  when: _acme_dns_reg.json is defined
+  no_log: true
+  run_once: true
+  delegate_to: localhost
+
+- name: 持久化 acme-dns 注册信息
+  ansible.builtin.copy:
+    content: "{{ _acme_dns_reg.json | to_nice_json }}"
+    dest: "{{ tls_acme_dns_state_file }}"
+    mode: "0600"
+  when: _acme_dns_reg.json is defined
+  no_log: true
+  run_once: true
+  delegate_to: localhost
+
+- name: 输出 CNAME 目标
+  ansible.builtin.debug:
+    msg: >-
+      acme-dns DNS 记录：_acme-challenge.{{ _acme_dns_domain }}
+      CNAME {{ _acme_dns_client.get('fulldomain', '') }}
+  when: _acme_dns_client.get('fulldomain', '') | length > 0
+  run_once: true
+  delegate_to: localhost

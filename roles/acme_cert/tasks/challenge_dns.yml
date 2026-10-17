@@ -1,0 +1,73 @@
+---
+# DNS-01（acme-dns）：TXT 由控制端写入，节点无需开放端口。
+# 注册、state 与 CNAME 目标在 main.yml 的 acme_dns_bootstrap.yml 中准备。
+
+- name: 写入 TXT 并等待生效
+  when: tls_order.challenge_data | default({}) | length > 0
+  block:
+    - name: 获取 dns-01 校验信息
+      ansible.builtin.set_fact:
+        _acme_dns_authz: "{{ tls_order.challenge_data | dict2items | first }}"
+      run_once: true
+      delegate_to: localhost
+
+    - name: 写入 acme-dns TXT
+      ansible.builtin.uri:
+        url: "{{ _acme_dns_client.get('update_url', tls_acme_dns_update_url) }}"
+        method: POST
+        body_format: json
+        body:
+          subdomain: "{{ _acme_dns_client.subdomain }}"
+          username: "{{ _acme_dns_client.username }}"
+          password: "{{ _acme_dns_client.password }}"
+          txt: "{{ _acme_dns_authz.value['dns-01'].resource_value }}"
+        status_code: [200, 204]
+        validate_certs: "{{ tls_acme_dns_validate_certs }}"
+        timeout: 30
+      no_log: true
+      run_once: true
+      delegate_to: localhost
+
+    - name: 等待 TXT 在 DNS 中可见
+      block:
+        - name: 查询 TXT
+          ansible.builtin.command:
+            cmd: >-
+              dig +short TXT {{ _acme_dns_authz.value['dns-01'].resource }}
+              @{{ tls_acme_dns_resolver }}
+          register: _acme_dns_txt
+          until: >-
+            _acme_dns_authz.value['dns-01'].resource_value in
+            (_acme_dns_txt.stdout | default('') | regex_replace('"', ''))
+          retries: "{{ tls_acme_dns_propagation_retries }}"
+          delay: "{{ tls_acme_dns_propagation_delay }}"
+          changed_when: false
+          run_once: true
+          delegate_to: localhost
+      rescue:
+        - name: TXT 未生效
+          ansible.builtin.fail:
+            msg: >-
+              TXT 未在预期时间内生效：
+              {{ _acme_dns_authz.value['dns-01'].resource }}
+              期望 CNAME：_acme-challenge.{{ _acme_dns_domain }} ->
+              {{ _acme_dns_client.get('fulldomain', '')
+                 if _acme_dns_client.get('fulldomain', '') | length > 0
+                 else '未提供 fulldomain' }}
+              （当前解析：{{ _acme_dns_txt.stdout | default('空') }}）
+          run_once: true
+          delegate_to: localhost
+
+- name: 通知 CA 完成校验并取回证书
+  community.crypto.acme_certificate:
+    acme_directory: "{{ tls_acme_directory }}"
+    acme_version: 2
+    account_key_src: "{{ tls_work_dir }}/account.key"
+    modify_account: false
+    challenge: dns-01
+    csr: "{{ tls_domain_dir }}/csr.pem"
+    data: "{{ tls_order }}"
+    dest: "{{ tls_domain_dir }}/cert.pem"
+    fullchain_dest: "{{ tls_domain_dir }}/fullchain.pem"
+  run_once: true
+  delegate_to: localhost

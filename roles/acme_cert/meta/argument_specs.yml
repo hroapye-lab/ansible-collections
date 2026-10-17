@@ -1,0 +1,51 @@
+---
+argument_specs:
+  main:
+    short_description: Issue or renew certificates via ACME (HTTP-01 or DNS-01 with acme-dns)
+    options:
+      tls_domain:
+        type: str
+        required: true
+        description: Certificate domain; also used as the CSR common name.
+      tls_challenge:
+        type: str
+        choices:
+          - http-01
+          - dns-01
+        default: http-01
+        description: ACME challenge type.
+
+      tls_acme_staging:
+        type: bool
+        default: false
+      tls_remaining_days:
+        type: int
+        default: 30
+      tls_force_renew:
+        type: bool
+        default: false
+      tls_acme_dns_clients:
+        type: dict
+        default: {}
+      tls_acme_dns_state_file:
+        type: str
+      tls_acme_dns_register_url:
+        type: str
+      tls_acme_dns_update_url:
+        type: str
+      tls_acme_dns_validate_certs:
+        type: bool
+        default: true
+      tls_acme_dns_allowfrom:
+        type: list
+        elements: str
+        default: []
+      tls_acme_dns_resolver:
+        type: str
+        default: "1.1.1.1"
+      tls_acme_dns_propagation_retries:
+        type: int
+        default: 24
+      tls_acme_dns_propagation_delay:
+        type: int
+        default: 5

@@ -46,10 +46,10 @@
         account_key_src: "{{ tls_work_dir }}/account.key"
         modify_account: false
         challenge: http-01
-        csr: "{{ tls_work_dir }}/csr.pem"
+        csr: "{{ tls_domain_dir }}/csr.pem"
         data: "{{ tls_order }}"
-        dest: "{{ tls_work_dir }}/cert.pem"
-        fullchain_dest: "{{ tls_work_dir }}/{{ tls_domain }}.pem"
+        dest: "{{ tls_domain_dir }}/cert.pem"
+        fullchain_dest: "{{ tls_domain_dir }}/fullchain.pem"
       run_once: true
       delegate_to: localhost
   always:

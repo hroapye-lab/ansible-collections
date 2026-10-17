@@ -1,0 +1,41 @@
+---
+# git_sync —— 拉取 git 仓库的指定 ref，把其中某个子目录同步到目的目录。
+#
+# 分工：克隆/检出在控制机完成（目标机既不需要 git，也不需要能访问仓库），
+# 结果再按 git_sync_push_method 推送到目标机的 git_sync_dest。
+
+# 仓库地址（必填）。https / ssh 均可；ssh 用 git_sync_key_file 指定私钥。
+git_sync_repo: ""
+
+# 目标机上的目的目录（必填）。不存在时自动创建。
+git_sync_dest: ""
+
+# 要检出的 ref：分支 / tag / commit sha；留空 = 远程默认分支（HEAD）。
+# 值为裸 commit sha 时 git_sync_depth 必须是 0，浅克隆取不到任意 sha。
+git_sync_ref: ""
+
+# 仓库内要同步的子目录（相对仓库根，可多级，如 deploy/compose）；留空 = 仓库根。
+git_sync_subdir: ""
+
+# 浅克隆深度：1 = 只取最新一次提交；0 = 全量克隆。
+git_sync_depth: 1
+
+# SSH 私钥在控制机上的路径；留空则交给 ssh-agent / 默认密钥。
+git_sync_key_file: ""
+
+# ssh 仓库时是否自动接受未知主机的 host key。
+git_sync_accept_hostkey: false
+
+# 控制机的缓存目录：每个 repo#ref 一个子目录，同一键复用、不重复克隆。
+git_sync_cache_dir: /tmp/ansible-git-sync
+
+# 推送方式：
+#   copy —— Ansible 逐文件推送，保留源文件权限；不删除目的目录里的多余文件。
+#   sync —— rsync 一次进程，支持 git_sync_sync_exclude / git_sync_sync_delete。
+git_sync_push_method: copy
+
+# sync 方式的 rsync 排除模式（任意层级匹配），如 ['.git', '*.j2']。
+git_sync_sync_exclude: []
+
+# sync 方式是否删除目的目录中源端已不存在的文件（镜像语义）。
+git_sync_sync_delete: false

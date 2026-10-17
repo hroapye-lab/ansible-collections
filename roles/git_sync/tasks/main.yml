@@ -1,0 +1,69 @@
+---
+# git_sync —— 拉取 git 仓库指定 ref 的某个子目录，同步到目标机的目的目录。
+#
+# 三步：控制机按 repo#ref 缓存克隆/检出 → 取仓库内子目录 → 推送到 git_sync_dest。
+
+- name: 校验必填变量
+  ansible.builtin.assert:
+    that:
+      - git_sync_repo | length > 0
+      - git_sync_dest | length > 0
+    fail_msg: "git_sync 必须提供 git_sync_repo 与 git_sync_dest"
+
+- name: 解析控制机缓存目录（按 repo#ref 区分）
+  ansible.builtin.set_fact:
+    git_sync_workdir: "{{ git_sync_cache_dir }}/{{ (git_sync_repo ~ '#' ~ git_sync_ref) | hash('sha1') }}"
+
+- name: 解析待同步的源目录
+  ansible.builtin.set_fact:
+    git_sync_src: >-
+      {{ git_sync_workdir ~ ('/' ~ git_sync_subdir if git_sync_subdir else '') }}
+
+- name: 克隆/检出仓库（控制机）
+  ansible.builtin.git:
+    repo: "{{ git_sync_repo }}"
+    dest: "{{ git_sync_workdir }}"
+    version: "{{ git_sync_ref | default('HEAD', true) }}"
+    depth: "{{ git_sync_depth }}"
+    force: true
+    accept_hostkey: "{{ git_sync_accept_hostkey }}"
+    key_file: "{{ git_sync_key_file | default(omit, true) }}"
+  delegate_to: localhost
+  register: git_sync_checkout
+
+- name: 检查待同步目录是否存在（控制机）
+  ansible.builtin.stat:
+    path: "{{ git_sync_src }}"
+  delegate_to: localhost
+  register: git_sync_src_stat
+
+- name: 校验待同步目录存在
+  ansible.builtin.assert:
+    that:
+      - git_sync_src_stat.stat.isdir | default(false)
+    fail_msg: >-
+      {{ git_sync_repo }}@{{ git_sync_ref | default('HEAD', true) }} 里没有子目录
+      '{{ git_sync_subdir }}'
+
+- name: 同步到目的目录（copy）
+  ansible.builtin.copy:
+    src: "{{ git_sync_src }}/"
+    dest: "{{ git_sync_dest }}/"
+    mode: preserve
+  register: git_sync_copy
+  when: git_sync_push_method == 'copy'
+
+- name: 同步到目的目录（sync）
+  ansible.posix.synchronize:
+    src: "{{ git_sync_src }}/"
+    dest: "{{ git_sync_dest }}/"
+    delete: "{{ git_sync_sync_delete }}"
+    use_ssh_args: true
+    rsync_opts: "{{ git_sync_sync_exclude | map('regex_replace', '^', '--exclude=') | list }}"
+  register: git_sync_sync
+  when: git_sync_push_method == 'sync'
+
+- name: 导出结果供调用方使用
+  ansible.builtin.set_fact:
+    git_sync_revision: "{{ git_sync_checkout.after | default('') }}"
+    git_sync_changed: "{{ git_sync_copy.changed | default(false) or git_sync_sync.changed | default(false) }}"

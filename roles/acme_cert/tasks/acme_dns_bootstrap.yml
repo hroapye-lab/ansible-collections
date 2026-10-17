@@ -4,13 +4,6 @@
 #   后续运行：直接读状态文件，跳过注册
 # 该文件在 tls_challenge=dns-01 时、创建 ACME 订单之前执行。
 
-- name: 计算 acme-dns 使用的域名
-  ansible.builtin.set_fact:
-    _acme_dns_domain: >-
-      {{ tls_domain | regex_replace('^\*\.', '') }}
-  run_once: true
-  delegate_to: localhost
-
 - name: 读取已有 acme-dns 状态
   ansible.builtin.slurp:
     src: "{{ tls_acme_dns_state_file }}"
@@ -32,10 +25,19 @@
 - name: 读取该域名已有的 acme-dns 配置
   ansible.builtin.set_fact:
     _acme_dns_client: >-
-      {{ tls_acme_dns_clients.get(_acme_dns_domain, {})
-         if (tls_acme_dns_clients.get(_acme_dns_domain, {}) | length > 0)
+      {{ tls_acme_dns_clients.get(tls_domain, {})
+         if (tls_acme_dns_clients.get(tls_domain, {}) | length > 0)
          else _acme_dns_state_client }}
   no_log: true
+  run_once: true
+  delegate_to: localhost
+
+- name: 创建 acme-dns 状态目录
+  ansible.builtin.file:
+    path: "{{ tls_acme_dns_state_file | dirname }}"
+    state: directory
+    mode: "0700"
+  when: _acme_dns_client | length == 0
   run_once: true
   delegate_to: localhost
 
@@ -76,7 +78,7 @@
 - name: 输出 CNAME 目标
   ansible.builtin.debug:
     msg: >-
-      acme-dns DNS 记录：_acme-challenge.{{ _acme_dns_domain }}
+      acme-dns DNS 记录：_acme-challenge.{{ tls_domain }}
       CNAME {{ _acme_dns_client.get('fulldomain', '') }}
   when: _acme_dns_client.get('fulldomain', '') | length > 0
   run_once: true

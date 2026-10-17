@@ -32,19 +32,19 @@
 
 - name: 生成域名私钥
   community.crypto.openssl_privatekey:
-    path: "{{ tls_domain_dir }}/privkey.pem"
+    path: "{{ tls_key_path }}"
     type: RSA
     size: "{{ tls_key_size }}"
     mode: "0640"
   run_once: true
   delegate_to: localhost
 
-- name: 生成 CSR（CN 与 SAN 均为 tls_domain）
+- name: 生成 CSR（CN 为 tls_domain，SAN 按 tls_wildcard）
   community.crypto.openssl_csr:
-    path: "{{ tls_domain_dir }}/csr.pem"
-    privatekey_path: "{{ tls_domain_dir }}/privkey.pem"
+    path: "{{ tls_csr_path }}"
+    privatekey_path: "{{ tls_key_path }}"
     common_name: "{{ tls_domain }}"
-    subject_alt_name: ["DNS:{{ tls_domain }}"]
+    subject_alt_name: "{{ tls_san }}"
     force: "{{ tls_force_renew }}"
     mode: "0600"
   run_once: true
@@ -83,9 +83,9 @@
     account_key_src: "{{ tls_work_dir }}/account.key"
     modify_account: false
     challenge: "{{ tls_challenge }}"
-    csr: "{{ tls_domain_dir }}/csr.pem"
-    dest: "{{ tls_domain_dir }}/cert.pem"
-    fullchain_dest: "{{ tls_domain_dir }}/fullchain.pem"
+    csr: "{{ tls_csr_path }}"
+    dest: "{{ tls_cert_path }}"
+    fullchain_dest: "{{ tls_fullchain_path }}"
     remaining_days: "{{ tls_remaining_days }}"
     force: "{{ tls_force_renew }}"
   register: tls_order
@@ -114,15 +114,15 @@
 
 - name: 统一最终产物权限
   ansible.builtin.file:
-    path: "{{ tls_domain_dir }}/{{ item }}"
+    path: "{{ item }}"
     mode: "0640"
   loop:
-    - "fullchain.pem"
-    - "privkey.pem"
+    - "{{ tls_fullchain_path }}"
+    - "{{ tls_key_path }}"
   run_once: true
   delegate_to: localhost
 
 - name: 导出证书路径
   ansible.builtin.set_fact:
-    acme_tls_cert: "{{ tls_domain_dir }}/fullchain.pem"
-    acme_tls_key: "{{ tls_domain_dir }}/privkey.pem"
+    acme_tls_cert: "{{ tls_fullchain_path }}"
+    acme_tls_key: "{{ tls_key_path }}"

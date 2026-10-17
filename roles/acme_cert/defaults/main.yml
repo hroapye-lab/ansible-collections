@@ -1,9 +1,10 @@
 ---
 # acme_cert：只负责签发证书（ACME：HTTP-01 或 DNS-01 + acme-dns），与具体项目无关。
-# 调用方需提供：tls_domain（证书域名，非空：作为 CSR 的 CN）。
+# 调用方需提供：tls_domain（base domain，不带 *）和 tls_wildcard（是否申请泛域名）。
 # 文件全部写 tls_work_dir（调用方无需关心）：
 #   {{ tls_work_dir }}/account.key（ACME 账号，跨证书共享）
-#   {{ tls_domain_dir }}/csr.pem / cert.pem / fullchain.pem / privkey.pem / acme-dns.json
+#   {{ tls_domain_dir }}/{{ tls_file_prefix }}{csr,privkey,cert,fullchain}.pem
+#   {{ tls_acme_dns_state_file }}（acme-dns client，apex/wildcard 共享）
 
 # staging=true 走 Let's Encrypt 演练环境（签发不受信证书，仅供演练）
 tls_acme_staging: false
@@ -16,8 +17,19 @@ tls_acme_directory: >-
 # 需要完全自定义时直接覆盖 tls_work_dir（如 -e tls_work_dir=/tmp/acme-debug，此时不再加后缀）。
 tls_work_dir_base: "/root/ansible/keys/acme"
 tls_work_dir: "{{ tls_work_dir_base }}{{ '-staging' if tls_acme_staging else '' }}"
-# 每个域名的文件放在 hash 子目录，目录内文件名固定
-tls_domain_dir: "{{ tls_work_dir }}/{{ tls_domain | hash('sha256') }}"
+# tls_domain 必须是不带 *. 的 base domain；泛域名用 tls_wildcard 声明
+tls_wildcard: false
+# http-01 不支持泛域名，此时忽略 tls_wildcard
+tls_wildcard_effective: "{{ (tls_wildcard | bool) and tls_challenge == 'dns-01' }}"
+# 每个 base domain 一个目录；泛域名文件加前缀，和普通证书共存
+tls_domain_dir: "{{ tls_work_dir }}/{{ tls_domain }}"
+tls_file_prefix: "{{ 'wildcard-' if tls_wildcard_effective else '' }}"
+tls_csr_path: "{{ tls_domain_dir }}/{{ tls_file_prefix }}csr.pem"
+tls_key_path: "{{ tls_domain_dir }}/{{ tls_file_prefix }}privkey.pem"
+tls_cert_path: "{{ tls_domain_dir }}/{{ tls_file_prefix }}cert.pem"
+tls_fullchain_path: "{{ tls_domain_dir }}/{{ tls_file_prefix }}fullchain.pem"
+# CSR CN 用 base domain；SAN 由 tls_wildcard 决定
+tls_san: ["DNS:{{ '*.' if tls_wildcard_effective else '' }}{{ tls_domain }}"]
 # 证书剩余有效期低于该天数才续期；force_renew 强制重签（域名变更 / 演练）
 tls_remaining_days: 30
 tls_force_renew: false
@@ -40,9 +52,9 @@ tls_challenge: http-01
 # 如果已经在别处注册过，可直接通过 tls_acme_dns_clients 提供（优先于状态文件）。
 tls_acme_dns_register_url: "https://auth.acme-dns.io/register"
 tls_acme_dns_update_url: "https://auth.acme-dns.io/update"
-# acme-dns 状态文件放在域名目录下，固定文件名；内容只包含该域名的
-# username/password/subdomain/fulldomain，权限 0600，不要提交到版本库。
-tls_acme_dns_state_file: "{{ tls_domain_dir }}/acme-dns.json"
+# acme-dns client 按 base domain 共享，apex/wildcard 使用同一份 client/CNAME。
+# client state 放在独立的 acme-dns 目录，权限 0600，不要提交到版本库。
+tls_acme_dns_state_file: "{{ tls_work_dir }}/acme-dns/{{ tls_domain }}/acme-dns.json"
 # 自建 acme-dns 使用自签证书时，需要显式设为 false（或自行提供可信 CA）
 tls_acme_dns_validate_certs: true
 # 注册时限制允许调用 /update 的来源（CIDR 列表）；留空表示不限制

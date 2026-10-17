@@ -6,7 +6,11 @@ argument_specs:
       tls_domain:
         type: str
         required: true
-        description: Certificate domain; also used as the CSR common name.
+        description: Base certificate domain without a leading '*.'; used as the CSR common name.
+      tls_wildcard:
+        type: bool
+        default: false
+        description: Request a wildcard certificate for tls_domain.
       tls_challenge:
         type: str
         choices:

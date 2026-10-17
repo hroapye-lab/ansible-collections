@@ -50,7 +50,7 @@
             msg: >-
               TXT 未在预期时间内生效：
               {{ _acme_dns_authz.value['dns-01'].resource }}
-              期望 CNAME：_acme-challenge.{{ _acme_dns_domain }} ->
+              期望 CNAME：_acme-challenge.{{ tls_domain }} ->
               {{ _acme_dns_client.get('fulldomain', '')
                  if _acme_dns_client.get('fulldomain', '') | length > 0
                  else '未提供 fulldomain' }}
@@ -65,9 +65,9 @@
     account_key_src: "{{ tls_work_dir }}/account.key"
     modify_account: false
     challenge: dns-01
-    csr: "{{ tls_domain_dir }}/csr.pem"
+    csr: "{{ tls_csr_path }}"
     data: "{{ tls_order }}"
-    dest: "{{ tls_domain_dir }}/cert.pem"
-    fullchain_dest: "{{ tls_domain_dir }}/fullchain.pem"
+    dest: "{{ tls_cert_path }}"
+    fullchain_dest: "{{ tls_fullchain_path }}"
   run_once: true
   delegate_to: localhost

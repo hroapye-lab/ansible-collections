@@ -4,7 +4,7 @@
     path: /etc/apt/sources.list.d/docker.list
     state: absent
 
-- name: 添加 Docker CE 源（阿里云镜像，deb822 格式，自动下载 GPG 公钥）
+- name: 添加 Docker CE 源（deb822 格式，自动下载 GPG 公钥）
   ansible.builtin.deb822_repository:
     name: docker
     types: deb
@@ -14,10 +14,16 @@
     signed_by: "{{ docker_apt_key_url }}"
     install_python_debian: true
     state: present
+  register: docker_repo
 
-- name: 更新 apt 缓存（Docker 源）
+- name: 更新 apt 缓存（仅在 Docker 源新增/变更后）
+  # Docker 不要求周期性刷新索引：只有 repo 新增/变更才需要重建 apt 索引。
+  # 首次安装时 deb822_repository 必然 changed，这里会执行；之后直接跳过。
+  # 纯缓存刷新，不计入系统变更。
   ansible.builtin.apt:
     update_cache: true
+  when: docker_repo.changed
+  changed_when: false
 
 - name: 安装 Docker 组件
   ansible.builtin.apt:

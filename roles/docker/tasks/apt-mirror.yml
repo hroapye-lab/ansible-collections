@@ -41,3 +41,5 @@
 - name: 更新 apt 缓存（新源）
   ansible.builtin.apt:
     update_cache: true
+  # sources.list 刚被重写，必须实际刷新；纯缓存刷新不计入系统变更
+  changed_when: false

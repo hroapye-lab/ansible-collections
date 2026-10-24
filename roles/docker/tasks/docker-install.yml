@@ -1,28 +1,45 @@
 ---
-- name: 移除旧的 docker.list（避免与 deb822 源重复）
+- name: 移除旧的 docker.sources（统一使用 one-line apt 源）
   ansible.builtin.file:
-    path: /etc/apt/sources.list.d/docker.list
+    path: /etc/apt/sources.list.d/docker.sources
     state: absent
 
-- name: 添加 Docker CE 源（deb822 格式，自动下载 GPG 公钥）
-  ansible.builtin.deb822_repository:
-    name: docker
-    types: deb
-    uris: "{{ docker_apt_repo_base }}"
-    suites: "{{ docker_apt_repo_suites }}"
-    components: "{{ docker_apt_repo_components }}"
-    signed_by: "{{ docker_apt_key_url }}"
-    install_python_debian: true
-    state: present
+- name: 创建 APT keyrings 目录
+  ansible.builtin.file:
+    path: "{{ docker_apt_keyring_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: 下载 Docker CE GPG 公钥
+  ansible.builtin.get_url:
+    url: "{{ docker_apt_key_url }}"
+    dest: "{{ docker_apt_keyring_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: docker_apt_key
+
+- name: 添加 Docker CE 源（one-line 格式）
+  ansible.builtin.copy:
+    content: >-
+      deb [signed-by={{ docker_apt_keyring_path }}]
+      {{ docker_apt_repo_base }}
+      {{ docker_apt_repo_suites | join(' ') }}
+      {{ docker_apt_repo_components | join(' ') }}
+    dest: /etc/apt/sources.list.d/docker.list
+    owner: root
+    group: root
+    mode: "0644"
   register: docker_repo
 
-- name: 更新 apt 缓存（仅在 Docker 源新增/变更后）
-  # Docker 不要求周期性刷新索引：只有 repo 新增/变更才需要重建 apt 索引。
-  # 首次安装时 deb822_repository 必然 changed，这里会执行；之后直接跳过。
+- name: 更新 apt 缓存（仅在 Docker 源或公钥变更后）
+  # Docker 不要求周期性刷新索引：只有仓库或公钥变更才需要重建 apt 索引。
   # 纯缓存刷新，不计入系统变更。
   ansible.builtin.apt:
     update_cache: true
-  when: docker_repo.changed
+  when: docker_repo.changed or docker_apt_key.changed
   changed_when: false
 
 - name: 安装 Docker 组件

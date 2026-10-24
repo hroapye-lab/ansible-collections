@@ -33,6 +33,7 @@ apt_components: >-
 # Docker CE apt 仓库走阿里云镜像
 docker_apt_repo_base: "{{ apt_mirror_base + '/docker-ce/linux/' + ('debian' if ansible_facts['distribution'] == 'Debian' else 'ubuntu') }}"
 docker_apt_key_url: "{{ docker_apt_repo_base }}/gpg"
+docker_apt_keyring_path: /etc/apt/keyrings/docker.asc
 
 # 该镜像沿用了 Docker 官方的「扁平（flat）」仓库布局：
 #   <repo_base>/dists/<codename>/<suite>/binary-<arch>/Packages

@@ -11,6 +11,13 @@
   tags:
     - set_hostname
 
+- name: "set system timezone"
+  community.general.timezone:
+    name: "{{ timezone }}"
+  when: timezone | length > 0
+  tags:
+    - set_timezone
+
 - name: Add common hosts line
   lineinfile:
     path: /etc/hosts

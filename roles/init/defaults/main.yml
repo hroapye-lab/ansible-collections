@@ -7,6 +7,9 @@ close_password: "yes"
 #   node_ip             —— 主机名 = ip-内网IP（需 node_ip）
 #hostname_format: 'group-ip-inventory'
 
+# 系统时区，留空则跳过设置
+timezone: 'Asia/Shanghai'
+
 extra_disk_device: ''
 extra_mount_point: '/opt'
 

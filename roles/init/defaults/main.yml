@@ -9,6 +9,10 @@ source_list_replace: "no"
 #   node_ip             —— 主机名 = ip-内网IP（需 node_ip）
 #hostname_format: 'group-ip-inventory'
 
+# 容器内 /proc/sys 通常只读或受限；Ansible facts 会把 LXC/Incus、Docker、Podman 等
+# 统一标记为 container guest。需要强制启用可显式设为 true
+sysctl_enabled: "{{ 'container' not in (ansible_facts['virtualization_tech_guest'] | default([])) }}"
+
 # 系统时区，留空则跳过设置
 timezone: 'Asia/Shanghai'
 

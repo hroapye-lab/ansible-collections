@@ -16,6 +16,7 @@
 | `hroapy.misc.git_sync` | 拉取 git 指定 ref 的某个子目录，同步到目的目录 |
 | `hroapy.misc.acme_cert` | ACME（HTTP-01）签发证书 |
 | `hroapy.misc.rtpengine` | 安装 / 配置 rtpengine |
+| `hroapy.misc.wireguard` | 安装、配置并管理 systemd WireGuard peer |
 
 ## 分发与安装
 

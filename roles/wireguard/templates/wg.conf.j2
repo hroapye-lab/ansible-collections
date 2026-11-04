@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+[Interface]
+Address = {{ wireguard_addresses | join(', ') }}
+PrivateKey = {{ wireguard_private_key | trim }}
+MTU = {{ wireguard_mtu }}
+{% if wireguard_dns | length > 0 %}
+DNS = {{ wireguard_dns | join(', ') }}
+{% endif %}
+{% for peer in wireguard_peers %}
+[Peer]
+PublicKey = {{ peer.public_key | trim }}
+{% if peer.preshared_key | default('') | length > 0 %}
+PresharedKey = {{ peer.preshared_key | trim }}
+{% endif %}
+{% if peer.endpoint | default('') | length > 0 %}
+Endpoint = {{ peer.endpoint }}
+{% endif %}
+AllowedIPs = {{ peer.allowed_ips | join(', ') }}
+{% set peer_keepalive = peer.persistent_keepalive | default(wireguard_persistent_keepalive) | int %}
+{% if peer_keepalive > 0 %}
+PersistentKeepalive = {{ peer_keepalive }}
+{% endif %}
+
+{% endfor %}

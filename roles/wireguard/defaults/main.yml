@@ -1,0 +1,16 @@
+---
+# Generic system-level WireGuard peer role.
+# Peer provisioning and distribution are handled outside this role.
+
+wireguard_interface: wg0
+
+# Interface values shared by the host.
+wireguard_addresses: []
+wireguard_private_key: ""
+wireguard_dns: []
+wireguard_mtu: 1420
+wireguard_persistent_keepalive: 25
+
+# Each peer defines public_key and allowed_ips.
+# Optional peer fields are endpoint, preshared_key and persistent_keepalive.
+wireguard_peers: []

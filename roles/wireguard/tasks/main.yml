@@ -1,0 +1,118 @@
+---
+- name: Install WireGuard on Debian family
+  ansible.builtin.apt:
+    name: wireguard
+    state: present
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Install WireGuard on Fedora
+  ansible.builtin.package:
+    name: wireguard-tools
+    state: present
+  when: ansible_facts['distribution'] == 'Fedora'
+
+- name: Configure WireGuard repositories on Enterprise Linux
+  when: >-
+    ansible_facts['distribution'] in
+    ['RedHat', 'CentOS', 'Rocky', 'AlmaLinux', 'OracleLinux']
+  block:
+    - name: Download EPEL GPG key
+      ansible.builtin.get_url:
+        url: >-
+          https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-{{
+          ansible_facts['distribution_major_version'] }}
+        dest: >-
+          /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-{{
+          ansible_facts['distribution_major_version'] }}
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Configure EPEL repository
+      ansible.builtin.yum_repository:
+        name: epel
+        description: Extra Packages for Enterprise Linux
+        baseurl: >-
+          https://dl.fedoraproject.org/pub/epel/$releasever/Everything/$basearch/
+        enabled: true
+        gpgcheck: true
+        gpgkey: >-
+          file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-{{
+          ansible_facts['distribution_major_version'] }}
+
+    - name: Download ELRepo GPG key
+      ansible.builtin.get_url:
+        url: https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
+        dest: /etc/pki/rpm-gpg/RPM-GPG-KEY-elrepo
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Configure ELRepo repository
+      ansible.builtin.yum_repository:
+        name: elrepo
+        description: ELRepo.org Community Enterprise Linux Repository
+        baseurl: https://elrepo.org/linux/elrepo/el$releasever/$basearch/
+        enabled: true
+        gpgcheck: true
+        gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-elrepo
+
+    - name: Install WireGuard on Enterprise Linux
+      ansible.builtin.package:
+        name:
+          - wireguard-tools
+          - kmod-wireguard
+        state: present
+
+- name: Install WireGuard on SUSE and Arch Linux
+  ansible.builtin.package:
+    name: wireguard-tools
+    state: present
+  when: ansible_facts['os_family'] in ['Suse', 'Archlinux']
+
+- name: Reject unsupported systemd Linux family
+  ansible.builtin.fail:
+    msg: >-
+      WireGuard installation is not defined for
+      {{ ansible_facts['distribution'] }} ({{ ansible_facts['os_family'] }}).
+  when:
+    - ansible_facts['os_family'] != 'Debian'
+    - ansible_facts['distribution'] != 'Fedora'
+    - ansible_facts['distribution'] not in ['RedHat', 'CentOS', 'Rocky', 'AlmaLinux', 'OracleLinux']
+    - ansible_facts['os_family'] not in ['Suse', 'Archlinux']
+
+- name: Create WireGuard configuration directory
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Render WireGuard configuration
+  ansible.builtin.template:
+    src: wg.conf.j2
+    dest: "/etc/wireguard/{{ wireguard_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "wg-quick strip %s"
+  diff: false
+  register: wireguard_config
+
+- name: Enable and apply WireGuard systemd service
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ wireguard_interface }}"
+    enabled: true
+    state: "{{ 'restarted' if wireguard_config.changed else 'started' }}"
+
+- name: Verify WireGuard interface exists
+  ansible.builtin.stat:
+    path: "/sys/class/net/{{ wireguard_interface }}"
+  register: wireguard_interface_stat
+
+- name: Require active WireGuard interface
+  ansible.builtin.assert:
+    that:
+      - wireguard_interface_stat.stat.exists
+    fail_msg: "WireGuard service started, but interface {{ wireguard_interface }} does not exist."

@@ -1,8 +1,19 @@
-- name: "install iptables-services for CentOS"
+- name: "install iptables-services for RedHat family"
   ansible.builtin.yum:
     name: iptables-services
-    state: latest
-  when: ansible_facts['os_family'] in ["RedHat"] and ( net_access | default(true) )
+    state: present
+  when:
+    - ansible_facts['os_family'] in ["RedHat", "Amazon", "Kylin", "EulerOS", "UOS"]
+    - net_access | default(true)
+
+- name: "install iptables-persistent for Debian family"
+  ansible.builtin.apt:
+    name: iptables-persistent
+    state: present
+    update_cache: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: ansible_facts['os_family'] in ["Debian", "Ubuntu", "Deepin", "LinuxMint"]
 
 - name: "disable firewalld service for RedHat family"
   ansible.builtin.systemd:
@@ -24,15 +35,59 @@
     - ansible_facts['os_family'] in ["Debian", "Ubuntu", "Deepin", "LinuxMint"]
     - "'ufw.service' in ansible_facts.services | default({})"
 
-- name: "copy iptables config"
+- name: "create iptables directory for Debian family"
+  ansible.builtin.file:
+    path: /etc/iptables
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ansible_facts['os_family'] in ["Debian", "Ubuntu", "Deepin", "LinuxMint"]
+
+- name: "copy iptables config for RedHat family"
   ansible.builtin.template:
     src: ../files/iptables.j2
     dest: /etc/sysconfig/iptables
+    owner: root
+    group: root
+    mode: "0600"
   when: ansible_facts['os_family'] in ["RedHat", "Amazon", "Kylin", "EulerOS", "UOS"]
+  register: redhat_iptables_config
 
-- name: "enable and start iptables service"
+- name: "copy iptables config for Debian family"
+  ansible.builtin.template:
+    src: ../files/iptables.j2
+    dest: /etc/iptables/rules.v4
+    owner: root
+    group: root
+    mode: "0600"
+  when: ansible_facts['os_family'] in ["Debian", "Ubuntu", "Deepin", "LinuxMint"]
+  register: debian_iptables_config
+
+- name: "enable and start iptables service for RedHat family"
   ansible.builtin.systemd:
     name: iptables
     enabled: true
     state: started
   when: ansible_facts['os_family'] in ["RedHat", "Amazon", "Kylin", "EulerOS", "UOS"]
+
+- name: "enable and start netfilter-persistent for Debian family"
+  ansible.builtin.systemd:
+    name: netfilter-persistent
+    enabled: true
+    state: started
+  when: ansible_facts['os_family'] in ["Debian", "Ubuntu", "Deepin", "LinuxMint"]
+
+- name: "apply updated iptables rules for RedHat family"
+  ansible.builtin.shell:
+    cmd: iptables-restore < /etc/sysconfig/iptables
+  when:
+    - ansible_facts['os_family'] in ["RedHat", "Amazon", "Kylin", "EulerOS", "UOS"]
+    - redhat_iptables_config.changed
+
+- name: "apply updated iptables rules for Debian family"
+  ansible.builtin.shell:
+    cmd: iptables-restore < /etc/iptables/rules.v4
+  when:
+    - ansible_facts['os_family'] in ["Debian", "Ubuntu", "Deepin", "LinuxMint"]
+    - debian_iptables_config.changed

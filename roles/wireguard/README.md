@@ -52,11 +52,12 @@ Peer 可选字段：
 
 ## 行为
 
-1. 按系统族安装标准 WireGuard 包。
-2. 渲染 `/etc/wireguard/{{ wireguard_interface }}.conf`，权限 `0600`。
-3. 模板写入前通过 `wg-quick strip` 校验配置。
-4. 管理 `wg-quick@{{ wireguard_interface }}.service`。
-5. 配置变化时重启服务，并验证接口存在。
+1. `wireguard_addresses` 未定义、为 `null` 或为空列表时跳过整个 role。
+2. 按系统族安装标准 WireGuard 包。
+3. 渲染 `/etc/wireguard/{{ wireguard_interface }}.conf`，权限 `0600`。
+4. 模板写入前通过 `wg-quick strip` 校验配置。
+5. 管理 `wg-quick@{{ wireguard_interface }}.service`。
+6. 配置变化时重启服务，并验证接口存在。
 
 Debian/Ubuntu 的 `wireguard` 元包负责模块依赖。其他系统要求运行内核提供
 WireGuard 模块；role 不探测、不手动加载，也不安装宽泛内核包。模块缺失时

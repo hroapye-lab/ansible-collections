@@ -1,0 +1,9 @@
+---
+- name: 同步 Compose 项目
+  ansible.builtin.import_tasks: source.yml
+
+- name: 应用 Compose 配置
+  ansible.builtin.import_tasks: configure.yml
+
+- name: 启动 Compose 项目
+  ansible.builtin.import_tasks: up.yml

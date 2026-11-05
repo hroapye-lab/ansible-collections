@@ -1,0 +1,18 @@
+---
+- name: 检查项目目录是否存在
+  ansible.builtin.stat:
+    path: "{{ compose_dir }}"
+  register: compose_dir_stat
+
+- name: 停止并移除容器
+  community.docker.docker_compose_v2:
+    project_src: "{{ compose_dir }}"
+    state: absent
+    remove_volumes: "{{ compose_cleanup_data | bool }}"
+  when: compose_dir_stat.stat.exists
+
+- name: 删除项目目录
+  ansible.builtin.file:
+    path: "{{ compose_dir }}"
+    state: absent
+  when: compose_cleanup_data | bool and compose_dir_stat.stat.exists

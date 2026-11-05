@@ -39,6 +39,16 @@ compose_mount_dirs: []
 #   - mode：可选的落盘权限；省略时用 0644
 compose_templates: []
 
+# 需要按 XPath 修改的 XML 配置，逐项 {path, xpath, attribute?, value?, state?, create_if_missing?}：
+#   - path：XML 文件，相对 compose_dir
+#   - xpath：目标元素或属性
+#   - attribute：修改属性时填写；省略则修改元素文本
+#   - value：目标值
+#   - state：present（默认）或 absent
+#   - create_if_missing：XPath 不匹配时是否创建节点，默认 false
+# 目标文件不存在时跳过该项。
+compose_xml_patches: []
+
 # 模板可能要遍历的额外数据，给个空字典兜底：主机没提供时退化成空循环，
 # 而不是让 {% for k, v in compose_extra_properties.items() %} 报未定义
 compose_extra_properties: {}

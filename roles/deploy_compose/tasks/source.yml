@@ -1,0 +1,53 @@
+---
+- name: 解析源路径
+  ansible.builtin.set_fact:
+    # 压缩包 URL 模式的工作目录：以 URL 的 sha1 命名，同一 URL 复用、不重复下载
+    compose_tmp_workdir: "{{ compose_tmp_dir }}/{{ compose_src | hash('sha1') }}"
+    # 源目录：URL 模式取解包目录（可再进一层 compose_archive_subdir），否则用传入路径
+    compose_src_local: >-
+      {{ (compose_tmp_dir ~ '/' ~ (compose_src | hash('sha1')) ~ '/tree'
+          ~ ('/' ~ compose_archive_subdir if compose_archive_subdir else ''))
+         if '://' in compose_src else compose_src }}
+
+- name: 创建解包目录（压缩包 URL 模式）
+  # get_url 不会自建父目录，这里一次把工作目录与解包目录建出来
+  ansible.builtin.file:
+    path: "{{ compose_tmp_workdir }}/tree"
+    state: directory
+  delegate_to: localhost
+  when: "'://' in compose_src"
+
+- name: 下载压缩包（压缩包 URL 模式）
+  # 归档已存在则不重下
+  ansible.builtin.get_url:
+    url: "{{ compose_src }}"
+    dest: "{{ compose_tmp_workdir }}/archive"
+    checksum: "{{ compose_checksum }}"
+  delegate_to: localhost
+  when: "'://' in compose_src"
+
+- name: 解包（压缩包 URL 模式）
+  ansible.builtin.unarchive:
+    src: "{{ compose_tmp_workdir }}/archive"
+    dest: "{{ compose_tmp_workdir }}/tree"
+    remote_src: true
+  delegate_to: localhost
+  when: "'://' in compose_src"
+
+- name: 推送项目目录（copy）
+  ansible.builtin.copy:
+    src: "{{ compose_src_local }}/"
+    dest: "{{ compose_dir }}/"
+    mode: preserve
+  when: compose_push_method == 'copy'
+  register: compose_push_copy
+
+- name: 推送项目目录（sync）
+  ansible.posix.synchronize:
+    src: "{{ compose_src_local }}/"
+    dest: "{{ compose_dir }}/"
+    # 让 rsync 继承 ansible 的 ssh 配置，如果异常检查 ssh 配置的兼容问题
+    use_ssh_args: true
+    rsync_opts: "{{ compose_sync_exclude | map('regex_replace', '^', '--exclude=') | list }}"
+  when: compose_push_method == 'sync'
+  register: compose_push_sync

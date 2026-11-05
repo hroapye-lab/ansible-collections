@@ -18,6 +18,20 @@
 | `hroapy.misc.rtpengine` | 安装 / 配置 rtpengine |
 | `hroapy.misc.wireguard` | 安装、配置并管理 systemd WireGuard peer |
 
+## Compose XML 修改
+
+`hroapy.misc.deploy_compose` 支持用 `compose_xml_patches` 按 XPath 修改 XML。路径相对于 `compose_dir`：
+
+```yaml
+compose_xml_patches:
+  - path: app/conf/logfile.conf.xml
+    xpath: /configuration/settings/param[@name='rollover']
+    attribute: value
+    value: "104857600"
+```
+
+支持 `state: present|absent` 和 `create_if_missing`，默认不创建不存在的节点；目标文件不存在时跳过该项。目标机需要安装 `lxml`，Debian/Ubuntu 对应 `python3-lxml`。
+
 ## 分发与安装
 
 以 git 仓库分发，消费方不直接读取本地文件。

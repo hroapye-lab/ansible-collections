@@ -1,0 +1,54 @@
+---
+- name: 渲染模板（按 profile 筛选）
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ compose_dir }}/{{ item.dst }}"
+    mode: "{{ item.mode | default('0644') }}"
+  loop: "{{ compose_templates }}"
+  when: item.profile | default('all') == 'all' or item.profile in compose_profiles
+  register: compose_render_result
+
+- name: 检查 XML 配置文件
+  ansible.builtin.stat:
+    path: "{{ compose_dir }}/{{ item.path }}"
+  loop: "{{ compose_xml_patches }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: compose_xml_files
+
+- name: 按 XPath 更新 XML 配置
+  community.general.xml:
+    path: "{{ compose_dir }}/{{ item.item.path }}"
+    xpath: "{{ item.item.xpath }}"
+    attribute: "{{ item.item.attribute | default(omit) }}"
+    value: "{{ item.item.value | default(omit) }}"
+    state: "{{ item.item.state | default('present') }}"
+    create_if_missing: "{{ item.item.create_if_missing | default(false) | bool }}"
+    backup: true
+  loop: "{{ compose_xml_files.results }}"
+  loop_control:
+    label: "{{ item.item.path }}: {{ item.item.xpath }}"
+  when: item.stat.exists
+  register: compose_xml_result
+
+- name: 写入 COMPOSE_PROFILES
+  # 缺这行时 docker compose up 会静默跳过带 profile 的服务
+  ansible.builtin.lineinfile:
+    path: "{{ compose_dir }}/.env"
+    regexp: '^COMPOSE_PROFILES='
+    line: "COMPOSE_PROFILES={{ compose_profiles | join(',') }}"
+    create: true
+    mode: "0644"
+  when: compose_profiles | length > 0
+
+- name: 准备挂载目录（按 profile 筛选）
+  ansible.builtin.file:
+    path: "{{ compose_dir }}/{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+    mode: "{{ item.mode | default(omit) }}"
+  loop: "{{ compose_mount_dirs }}"
+  when: item.profile | default('all') == 'all' or item.profile in compose_profiles
+  loop_control:
+    label: "{{ item.path }}"

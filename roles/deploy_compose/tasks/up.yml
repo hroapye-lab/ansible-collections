@@ -1,0 +1,17 @@
+---
+- name: 启动/更新容器
+  community.docker.docker_compose_v2:
+    project_src: "{{ compose_dir }}"
+    remove_orphans: true
+  register: compose_up_result
+
+- name: 配置文件有更新，重启容器使其生效
+  community.docker.docker_compose_v2:
+    project_src: "{{ compose_dir }}"
+    state: restarted
+  when: >-
+    not compose_up_result.changed and
+    (compose_push_copy.changed | default(false) or
+     compose_push_sync.changed | default(false) or
+     compose_render_result.changed | default(false) or
+     compose_xml_result.changed | default(false))

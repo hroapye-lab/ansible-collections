@@ -32,6 +32,18 @@ compose_xml_patches:
 
 支持 `state: present|absent` 和 `create_if_missing`，默认不创建不存在的节点；目标文件不存在时跳过该项。目标机需要安装 `lxml`，Debian/Ubuntu 对应 `python3-lxml`。
 
+## Compose 构建与仅输出文件
+
+`hroapy.misc.deploy_compose` 默认沿用现有部署流程。以下变量可按需覆盖：
+
+```yaml
+# 启动前强制执行 docker compose build
+compose_force_build: true
+
+# 只推送并生成项目文件，不进入 up/restart 阶段
+compose_skip_up: true
+```
+
 ## 分发与安装
 
 以 git 仓库分发，消费方不直接读取本地文件。

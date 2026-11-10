@@ -3,6 +3,7 @@
   community.docker.docker_compose_v2:
     project_src: "{{ compose_dir }}"
     remove_orphans: true
+    build: "{{ compose_force_build | bool | ternary('always', 'policy') }}"
   register: compose_up_result
 
 - name: 配置文件有更新，重启容器使其生效

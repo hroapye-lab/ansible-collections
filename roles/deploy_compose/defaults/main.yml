@@ -19,6 +19,14 @@
 # 空列表 = 不写 .env，完全以项目 .env.j2 的值为准。
 compose_profiles: []
 
+# 启动前是否强制构建。默认不额外干预 Compose 自己的构建判断；
+# true 时等价于 docker compose up --build，仅正常部署流程生效。
+compose_force_build: false
+
+# 是否跳过启动/重启阶段。true 时只推送并生成项目文件，不进入 up.yml。
+# compose_force_build 是 up 调用的参数，因此跳过 up 时也不会构建。
+compose_skip_up: false
+
 # 推送方式：copy（Ansible 逐文件）| sync（rsync，一次进程）
 compose_push_method: copy
 
